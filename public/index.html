@@ -390,7 +390,63 @@
         </div>
     </main>
 
-    <!-- Modals (Reserve/View) hidden for brevity, intact from previous -->
+    <!-- Modal 1: Reserve Part -->
+    <div v-if="showReserveModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/40 backdrop-blur-sm transition-opacity">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden transform transition-all">
+            <div class="p-6 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
+                <h3 class="text-lg font-bold text-gray-900">Reserve Part</h3>
+                <button @click="showReserveModal = false" class="text-gray-400 hover:text-gray-600 transition">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+            </div>
+            <div class="p-6 space-y-5">
+                <div>
+                    <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Selected Part Number</label>
+                    <p class="font-mono font-extrabold text-xl text-slate-900">{{ reserveForm.partNumber }}</p>
+                </div>
+                <div>
+                    <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Customer Name</label>
+                    <input v-model="reserveForm.customerName" type="text" placeholder="e.g. John Doe" class="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-semibold outline-none focus:ring-2 focus:ring-[#0071e3]">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Device Serial Number</label>
+                    <input v-model="reserveForm.deviceSn" type="text" placeholder="e.g. C02ABCDEF" class="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-mono font-semibold outline-none focus:ring-2 focus:ring-[#0071e3]">
+                </div>
+            </div>
+            <div class="p-6 border-t border-gray-100 bg-gray-50 flex justify-end gap-3">
+                <button @click="showReserveModal = false" class="px-5 py-2.5 rounded-xl text-sm font-bold text-gray-600 hover:bg-gray-200 transition">Cancel</button>
+                <button @click="submitReservation" :disabled="!reserveForm.customerName || !reserveForm.deviceSn" class="px-5 py-2.5 rounded-xl text-sm font-bold text-white bg-[#0071e3] hover:bg-[#005bb5] disabled:opacity-50 transition shadow-sm">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal 2: View Reservations -->
+    <div v-if="showViewModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/40 backdrop-blur-sm transition-opacity">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden transform transition-all flex flex-col max-h-[80vh]">
+            <div class="p-6 border-b border-gray-100 bg-gray-50 flex justify-between items-center shrink-0">
+                <div>
+                    <h3 class="text-lg font-bold text-gray-900">Active Reservations</h3>
+                    <p class="text-xs text-gray-500 font-mono mt-0.5">{{ viewModalPart }}</p>
+                </div>
+                <button @click="showViewModal = false" class="text-gray-400 hover:text-gray-600 transition">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+            </div>
+            <div class="overflow-y-auto p-6">
+                <div v-if="activeReservations.length === 0" class="text-center text-gray-500 font-medium py-8">No active reservations for this part.</div>
+                <div v-else class="space-y-4">
+                    <div v-for="res in activeReservations" :key="res.id" class="border border-gray-200 rounded-xl p-4 flex justify-between items-center bg-white shadow-sm hover:border-[#0071e3]/30 transition">
+                        <div>
+                            <p class="font-bold text-gray-900 text-sm mb-1">{{ res.customer_name }}</p>
+                            <p class="text-xs text-gray-500">Device S/N: <span class="font-mono text-gray-700 font-semibold">{{ res.device_sn }}</span></p>
+                            <p class="text-[10px] text-gray-400 mt-1">Reserved: {{ new Date(res.created_at).toLocaleDateString() }}</p>
+                        </div>
+                        <button @click="clearReservation(res.id)" class="text-xs font-bold text-red-600 hover:text-red-800 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg border border-red-100 transition">Clear</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 
 <script>
@@ -430,6 +486,7 @@ createApp({
         async fetchAWBs() { try { const res = await fetch('/api/awb-status'); this.awbList = await res.json(); } catch(e) { this.awbList = []; } },
         async fetchHistory() { try { const res = await fetch('/api/received-history'); this.historyList = await res.json(); } catch(e) { this.historyList = []; } },
         async fetchUsage() { try { const res = await fetch('/api/usage-history'); this.usageList = await res.json(); } catch(e) { this.usageList = []; } },
+        async fetchSerials() { try { const res = await fetch(`/api/serials/${this.useForm.partNumber}`); this.availableSerials = await res.json(); } catch(e) { this.availableSerials = []; } },
         
         async toggleExpand(item) {
             if (this.expandedRow === item.part_number) { this.expandedRow = null; return; }
@@ -444,77 +501,60 @@ createApp({
             const res = await fetch(`/api/serials/${encodeURIComponent(partNumber)}`); this.expandedSerials = await res.json(); this.fetchStock(); 
         },
 
-        uploadAppleExcel(event) {
-            const file = event.target.files[0]; if (!file) return;
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                const workbook = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
-                this.rawPDFText = XLSX.utils.sheet_to_csv(workbook.Sheets[workbook.SheetNames[0]]);
-                this.parseAppleText(); event.target.value = '';
-            };
-            reader.readAsArrayBuffer(file);
+        openReserveModal(partNumber) {
+            this.reserveForm = { partNumber: partNumber, customerName: '', deviceSn: '' };
+            this.showReserveModal = true;
         },
-        
-        // --- THIS IS THE UPGRADED SCANNER --- //
-        parseAppleText() {
-            this.parsedItems = []; this.parsedAwb = ''; 
-            const text = this.rawPDFText; if (!text) return;
-            
-            // Look for AWB/Tracking
-            const awbMatch = text.match(/HAWB[^\d]*(\d+)/i) || text.match(/AWB[^\d]*(\d+)/i) || text.match(/Tracking[^\d]*(\d+)/i); 
-            if (awbMatch) this.parsedAwb = awbMatch[1];
-            
-            // Look for PO
-            let globalPo = null;
-            const poMatch = text.match(/(Gnext-SSO[^\s,]+|SSO[^\s,]+|FOC[^\s,]+)/i);
-            if (poMatch) globalPo = poMatch[1];
-
-            // Extract each part
-            const matches = [...text.matchAll(/([A-Z0-9]*661-\d{4,5})/g)];
-            matches.forEach((match, index) => {
-                const blockText = text.substring(match.index + match[1].length, matches[index + 1] ? matches[index + 1].index : text.length);
-                const snMatch = blockText.match(/S\/N[,\s:]+([A-Z0-9]{8,15})/i);
-                
-                // Extra-strong G-Code search
-                let repairMatch = blockText.match(/(G\d{8,10})/i);
-                if (!repairMatch) repairMatch = text.match(/(G\d{8,10})/i); // Fallback to entire document if isolated
-                
-                this.parsedItems.push({ 
-                    awb: this.parsedAwb || 'UNKNOWN_AWB', 
-                    poNumber: globalPo,
-                    partNumber: match[1], 
-                    serialNumber: snMatch ? snMatch[1] : null, 
-                    repairId: repairMatch ? repairMatch[1] : null,
-                    qty: 1 
-                });
-            });
+        async submitReservation() {
+            await fetch('/api/reserve', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.reserveForm) });
+            this.showReserveModal = false; this.fetchStock();
+        },
+        async viewReservations(partNumber) {
+            this.viewModalPart = partNumber;
+            const res = await fetch(`/api/reservations/${encodeURIComponent(partNumber)}`);
+            this.activeReservations = await res.json();
+            this.showViewModal = true;
+        },
+        async clearReservation(id) {
+            if(!confirm("Clear this reservation?")) return;
+            await fetch('/api/unreserve', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
+            const res = await fetch(`/api/reservations/${encodeURIComponent(this.viewModalPart)}`);
+            this.activeReservations = await res.json();
+            if(this.activeReservations.length === 0) this.showViewModal = false;
+            this.fetchStock();
         },
 
-        async submitParsedList() {
-            if(this.parsedItems.length > 0) {
-                this.isSaving = true;
-                const res = await fetch('/api/upload-packing-list', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ items: this.parsedItems }) });
-                this.isSaving = false;
-                if (!res.ok) return alert("Database Error");
-                this.successMsg = `Loaded ${this.parsedItems.length} expected parts!`;
-                this.rawPDFText = ''; this.parsedItems = []; this.fetchAWBs(); this.fetchStock(); 
-                setTimeout(() => this.successMsg = '', 5000);
-            }
-        },
-        async searchExpected() {
-            if(!this.receiveSearch) return;
-            const res = await fetch(`/api/expected/${encodeURIComponent(this.receiveSearch.trim())}`);
-            this.expectedItems = (await res.json()).map(item => ({ ...item, classification: 'REFILLED' }));
-        },
-        async markReceived(item) {
-            await fetch('/api/mark-received', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ id: item.id, classification: item.classification, serialNumber: item.serial_number }) });
-            this.expectedItems = this.expectedItems.filter(i => i.id !== item.id);
-            this.successMsg = 'Part checked in!'; this.fetchStock(); this.fetchAWBs(); this.fetchDataForReports();
-            if(this.expectedItems.length === 0) this.receiveSearch = ''; 
-            setTimeout(() => this.successMsg = '', 3000);
-        }
-    }
-}).mount('#app')
-</script>
-</body>
-</html>
+        async findPartToUse() {
+            this.useSearchError = ''; const q = this.useSearch.trim(); if(!q) return;
+            const stockItem = this.stock.find(s => s.part_number.toLowerCase() === q.toLowerCase());
+            if (stockItem) {
+                this.useForm.partNumber = stockItem.part_number;
+                await this.fetchSerials(); this.useForm.serialNumber = ''; 
+            } else {
+                const res = await fetch(`/api/identify-sn/${encodeURIComponent(q)}`);
+                const data = await res.json();
+                if (data.part_number) {
+                    this.useForm.partNumber = data.part_number;A completely blank white page—often called the "White Screen of Death"—usually means the web application's interface crashed in your browser before it could render, or the server failed to deliver the necessary script files. 
+
+Here is how to isolate and fix the issue, starting with the fastest solutions:
+
+**1. The Quick Browser Fixes**
+*   **Hard Refresh:** Press **Ctrl + F5** (Windows) or **Cmd + Shift + R** (Mac) to force the browser to fetch a fresh version of the page, bypassing any corrupted cached files.
+*   **Go Incognito:** Open the page in a Private/Incognito window. If it loads perfectly, a browser extension (like an ad-blocker) or a corrupted cookie is blocking SnapDeploy's scripts. 
+*   **Clear Cache:** If Incognito worked, clear your browser's cache and cookies for the SnapDeploy URL.
+
+**2. Check for Hidden Errors (Developer Tools)**
+If the page is still white, your browser knows why, but it's hiding the error. 
+*   Press **F12** (or Right-Click > Inspect) to open Developer Tools.
+*   Click the **Console** tab and refresh the page. Look for **red error text**. 
+    *   *JavaScript errors* usually mean a bug in the app itself.
+    *   *CORS errors* mean there is a security misconfiguration preventing the page from talking to its server.
+*   Click the **Network** tab and refresh. Look for files failing to load (status codes like **404** Not Found or **500** Internal Server Error).
+
+**3. Server & Network Checks (If you are the admin)**
+If the Network tab shows 500-level errors, or if multiple users are seeing the white screen, the issue is on the server side:
+*   **Restart the Service:** If SnapDeploy is hosted on your own server, log in and restart the web service/daemon powering it.
+*   **Check Disk Space:** A server that has run out of disk space will often return blank pages because it cannot write session data or temporary files.
+*   **Check Logs:** Look at the web server error logs (e.g., IIS, Nginx, or Apache) for the specific backend failure.
+
+<FollowUp label="Want help decoding an error message?" query="I found some red text in the Developer Console. How do I interpret these specific error messages?" />
