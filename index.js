@@ -4,7 +4,8 @@ const path = require("path");
 const { Pool } = require("@neondatabase/serverless"); 
 
 const pool = new Pool({
-  connectionString: "postgresql://neondb_owner:npg_XHzkG8nMJx2B@ep-plain-night-azr7vi9q-pooler.c-3.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require",
+  // This line ensures it works securely on SnapDeploy AND locally in StackBlitz!
+  connectionString: process.env.DATABASE_URL || "postgresql://neondb_owner:npg_XHzkG8nMJx2B@ep-plain-night-azr7vi9q-pooler.c-3.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require",
   ssl: { require: true }
 });
 
@@ -13,20 +14,19 @@ fastify.register(require("@fastify/static"), {
   prefix: "/",
 });
 
-// UPDATED: Added a rule to safely handle 'LEGACY_SEED' serial numbers without doubling your count
+// Fetches live stock balance, ignoring FOC and Legacy Seed from refilled counts
 fastify.get("/api/stock", async (request, reply) => {
   try {
     const query = `
       SELECT 
         p.part_number, p.model, p.description, p.base_seed_qty as current_seed_qty,
-        (SELECT COUNT(*) FROM shipment_items s WHERE s.part_number = p.part_number AND s.status = 'RECEIVED' AND (s.classification IS NULL OR s.classification != 'LEGACY_SEED')) as total_refilled_received,
+        (SELECT COUNT(*) FROM shipment_items s WHERE s.part_number = p.part_number AND s.status = 'RECEIVED' AND (s.classification IS NULL OR (s.classification != 'LEGACY_SEED' AND s.classification != 'FOC'))) as total_refilled_received,
         (SELECT COUNT(*) FROM usage_logs u WHERE u.part_number = p.part_number) as total_used,
         (SELECT COUNT(*) FROM reservations r WHERE r.part_number = p.part_number AND r.status = 'RESERVED') as total_reserved
       FROM parts p
       ORDER BY p.part_number
     `;
     const result = await pool.query(query);
-    
     const processed = result.rows.map(row => {
       const remaining = parseInt(row.current_seed_qty) + parseInt(row.total_refilled_received) - parseInt(row.total_used);
       const available = remaining - parseInt(row.total_reserved);
@@ -36,11 +36,9 @@ fastify.get("/api/stock", async (request, reply) => {
   } catch (err) { return reply.code(500).send({ error: err.message }); }
 });
 
-// NEW: Link a Serial Number to a part already on your shelf
 fastify.post("/api/add-legacy-sn", async (request, reply) => {
   try {
     const { partNumber, serialNumber } = request.body;
-    // We log it under a dummy AWB called 'LEGACY-STOCK' so it doesn't mess up your active shipments
     const query = `INSERT INTO shipment_items (awb_number, part_number, serial_number, qty, status, classification, received_at) VALUES ('LEGACY-STOCK', $1, $2, 1, 'RECEIVED', 'LEGACY_SEED', NOW())`;
     await pool.query(query, [partNumber, serialNumber]);
     return { success: true };
@@ -72,6 +70,7 @@ fastify.post("/api/unreserve", async (request, reply) => {
   } catch (err) { return reply.code(500).send({ error: err.message }); }
 });
 
+// Uploads packing list, supporting PO Numbers and Repair IDs
 fastify.post("/api/upload-packing-list", async (request, reply) => {
   try {
     const items = request.body.items;
@@ -84,8 +83,8 @@ fastify.post("/api/upload-packing-list", async (request, reply) => {
       const existing = await pool.query(checkQuery, [item.awb, item.partNumber, item.serialNumber || null]);
 
       if (existing.rows.length === 0) {
-        const query = `INSERT INTO shipment_items (awb_number, part_number, serial_number, qty, status) VALUES ($1, $2, $3, $4, 'IN_TRANSIT')`;
-        await pool.query(query, [item.awb, item.partNumber, item.serialNumber || null, item.qty || 1]);
+        const query = `INSERT INTO shipment_items (awb_number, part_number, serial_number, qty, status, repair_id, po_number) VALUES ($1, $2, $3, $4, 'IN_TRANSIT', $5, $6)`;
+        await pool.query(query, [item.awb, item.partNumber, item.serialNumber || null, item.qty || 1, item.repairId || null, item.poNumber || null]);
         addedCount++;
       }
     }
@@ -150,8 +149,8 @@ fastify.post("/api/use", async (request, reply) => {
 fastify.get("/api/awb-status", async (request, reply) => {
   try {
     const query = `
-      SELECT awb_number, COUNT(id) as total_parts, SUM(CASE WHEN status = 'RECEIVED' THEN 1 ELSE 0 END) as received_parts,
-             json_agg(json_build_object('part', part_number, 'sn', serial_number, 'status', status, 'received_at', received_at)) as items
+      SELECT awb_number, MAX(po_number) as po_number, COUNT(id) as total_parts, SUM(CASE WHEN status = 'RECEIVED' THEN 1 ELSE 0 END) as received_parts,
+             json_agg(json_build_object('part', part_number, 'sn', serial_number, 'status', status, 'repair_id', repair_id)) as items
       FROM shipment_items GROUP BY awb_number ORDER BY MAX(created_at) DESC
     `;
     const result = await pool.query(query);
@@ -162,7 +161,7 @@ fastify.get("/api/awb-status", async (request, reply) => {
 fastify.get("/api/received-history", async (request, reply) => {
   try {
     const query = `
-      SELECT s.id, s.awb_number, s.part_number, s.serial_number, s.classification, s.received_at, p.description, p.model 
+      SELECT s.id, s.awb_number, s.po_number, s.repair_id, s.part_number, s.serial_number, s.classification, s.received_at, p.description, p.model 
       FROM shipment_items s LEFT JOIN parts p ON s.part_number = p.part_number
       WHERE s.status = 'RECEIVED' ORDER BY s.received_at DESC
     `;
@@ -184,6 +183,6 @@ fastify.get("/api/usage-history", async (request, reply) => {
 });
 
 fastify.listen({ port: 3000, host: "0.0.0.0" }, function (err, address) {
-  if (err) { console.error("SERVER ERROR:", err); process.exit(1); }
+  if (err) { console.error(err); process.exit(1); }
   console.log(`Your app is listening on ${address}`);
 });
