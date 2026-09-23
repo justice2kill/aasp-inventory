@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AASP Cloud Inventory</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', -apple-system, sans-serif; background-color: #F5F5F7; }
+        .glass-nav { background: rgba(255, 255, 255, 0.8); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+        .smooth-shadow { box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03); }
+        input, select, textarea { transition: all 0.2s ease; }
+        input:focus, select:focus, textarea:focus { box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.2); border-color: #0071e3; }
+        @media print {
+            .no-print { display: none !important; }
+            .print-only-table { width: 100%; border: 1px solid #e5e7eb; }
+            .print-only-table th, .print-only-table td { border: 1px solid #e5e7eb; padding: 8px; }
+            body { background: white; padding: 0; margin: 0; }
+            #app { padding: 0; max-width: 100%; }
+            .smooth-shadow { box-shadow: none; border: none; }
+        }
+    </style>
+</head>
+<body class="text-gray-800 antialiased">
+
+<div id="app" class="min-h-screen flex flex-col relative">
+    <!-- Navigation -->
+    <header class="no-print sticky top-0 z-40 glass-nav border-b border-gray-200">
+        <div class="max-w-[90rem] mx-auto px-6 h-16 flex items-center justify-between">
+            <div class="flex items-center space-x-2">
+                <svg class="w-6 h-6 text-slate-900" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+                <h1 class="text-xl font-bold tracking-tight text-gray-900">AASP Inventory</h1>
+            </div>
+            <nav class="hidden md:flex space-x-1 bg-gray-100 p-1 rounded-full border border-gray-200">
+                <button @click="activeTab = 'report'" :class="activeTab === 'report' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'" class="px-5 py-1.5 rounded-full text-sm font-semibold transition-all">Stock</button>
+                <button @click="activeTab = 'upload'" :class="activeTab === 'upload' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'" class="px-5 py-1.5 rounded-full text-sm font-semibold transition-all">Import</button>
+                <button @click="activeTab = 'awb'" :class="activeTab === 'awb' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'" class="px-5 py-1.5 rounded-full text-sm font-semibold transition-all">Tracker</button>
+                <button @click="activeTab = 'receive'" :class="activeTab === 'receive' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'" class="px-5 py-1.5 rounded-full text-sm font-semibold transition-all">Receive</button>
+                <button @click="activeTab = 'use'" :class="activeTab === 'use' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'" class="px-5 py-1.5 rounded-full text-sm font-semibold transition-all">Use</button>
+                <button @click="activeTab = 'reports'" :class="activeTab === 'reports' ? 'bg-slate-900 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'" class="px-5 py-1.5 rounded-full text-sm font-semibold transition-all">Reports</button>
+            </nav>
+        </div>
+    </header>
+
+    <main class="flex-grow max-w-[90rem] mx-auto w-full p-6 pt-8">
+        
+        <!-- MODULE 1: Stock Report (UPDATED WITH ACCORDION DROPDOWN) -->
+        <div v-show="activeTab === 'report'" class="bg-white rounded-2xl smooth-shadow border border-gray-100 p-8">
+            <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4 no-print">
+                <div>
+                    <h2 class="text-2xl font-bold tracking-tight text-gray-900">Live Stock Balance</h2>
+                    <p class="text-sm text-gray-500 mt-1">Click a blue Part Number to manage its individual Serial Numbers.</p>
+                </div>
+                <div class="flex items-center space-x-3 w-full md:w-auto">
+                    <select v-model="modelFilter" class="p-2.5 border border-gray-200 rounded-xl bg-gray-50 text-sm font-medium text-gray-700 w-full md:w-auto">
+                        <option value="">All Models</option>
+                        <option v-for="model in uniqueModels" :value="model">{{ model }}</option>
+                    </select>
+                    <input v-model="searchQuery" type="text" placeholder="Search Part Number..." class="p-2.5 border border-gray-200 rounded-xl w-full md:w-64 text-sm font-mono bg-gray-50 text-gray-700">
+                    <button @click="fetchStock" class="bg-white border border-gray-200 px-4 py-2.5 rounded-xl text-sm hover:bg-gray-50 font-semibold shadow-sm text-gray-700 transition">Refresh</button>
+                </div>
+            </div>
+            
+            <div class="overflow-x-auto rounded-xl border border-gray-100">
+                <table class="w-full text-left whitespace-nowrap print-only-table">
+                    <thead>
+                        <tr class="bg-gray-50/80 text-gray-500 text-xs uppercase tracking-wider border-b border-gray-100">
+                            <th class="p-4 font-semibold">Part Number</th>
+                            <th class="p-4 font-semibold">Model & Description</th>
+                            <th class="p-4 font-semibold text-center text-gray-400 border-l border-gray-200">Seed</th>
+                            <th class="p-4 font-semibold text-center text-gray-400">Refilled</th>
+                            <th class="p-4 font-semibold text-center text-gray-400 border-r border-gray-200">Used</th>
+                            <th class="p-4 font-semibold text-center bg-gray-100/50">Physical In-Stock</th>
+                            <th class="p-4 font-semibold text-center text-amber-600">Reserved</th>
+                            <th class="p-4 font-bold text-gray-900 text-center">Available</th>
+                            <th class="p-4 font-semibold text-center no-print">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-100">
+                        <template v-for="item in filteredStock" :key="item.part_number">
+                            <!-- Main Row -->
+                            <tr class="hover:bg-gray-50/50 transition">
+                                <td class="p-4 cursor-pointer group" @click="toggleExpand(item)">
+                                    <div class="flex items-center gap-2">
+                                        <svg class="w-4 h-4 text-gray-400 group-hover:text-[#0071e3] transition-transform" :class="{'rotate-90': expandedRow === item.part_number}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                                        <span class="font-mono text-sm font-bold text-[#0071e3] group-hover:underline">{{ item.part_number }}</span>
+                                    </div>
+                                </td>
+                                <td class="p-4">
+                                    <div class="text-sm font-bold text-gray-900">{{ item.model }}</div>
+                                    <div class="text-[11px] text-gray-500 mt-0.5 whitespace-normal w-48 leading-tight">{{ item.description }}</div>
+                                </td>
+                                <td class="p-4 text-center text-sm font-medium text-gray-500 border-l border-gray-100">{{ item.current_seed_qty }}</td>
+                                <td class="p-4 text-center text-sm font-medium text-blue-500">+{{ item.total_refilled_received }}</td>
+                                <td class="p-4 text-center text-sm font-medium text-red-400 border-r border-gray-100">-{{ item.total_used }}</td>
+                                <td class="p-4 text-center text-sm font-bold text-gray-900 bg-gray-50/30">{{ item.remaining_stock }}</td>
+                                <td class="p-4 text-center">
+                                    <button v-if="item.total_reserved > 0" @click="viewReservations(item.part_number)" class="inline-flex items-center justify-center px-3 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-700 hover:bg-amber-200 transition shadow-sm cursor-pointer">
+                                        {{ item.total_reserved }} Waiting
+                                    </button>
+                                    <span v-else class="text-sm text-gray-400 font-medium">0</span>
+                                </td>
+                                <td class="p-4 text-center">
+                                    <span class="inline-flex items-center justify-center px-3 py-1 rounded-full text-sm font-bold"
+                                          :class="item.available_stock <= 0 ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'">
+                                        {{ item.available_stock }}
+                                    </span>
+                                </td>
+                                <td class="p-4 text-center no-print">
+                                    <button @click="openReserveModal(item.part_number)" class="text-xs font-bold text-[#0071e3] hover:text-[#005bb5] px-3 py-1.5 border border-[#0071e3]/30 rounded-lg hover:bg-blue-50 transition shadow-sm">Reserve</button>
+                                </td>
+                            </tr>
+                            
+                            <!-- Expanded Dropdown Row (S/N Management) -->
+                            <tr v-if="expandedRow === item.part_number" class="bg-blue-50/10 border-b-2 border-blue-100 shadow-inner">
+                                <td colspan="9" class="p-6">
+                                    <div class="max-w-4xl border border-blue-200 bg-white rounded-xl p-5 shadow-sm">
+                                        <div class="flex justify-between items-center mb-4">
+                                            <h4 class="text-sm font-bold text-gray-900 flex items-center gap-2">
+                                                <svg class="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"></path></svg>
+                                                Individual Unit Tracking
+                                            </h4>
+                                            <p class="text-xs text-gray-500 font-medium">
+                                                <span class="text-gray-800 font-bold">{{ item.remaining_stock }}</span> physical units &bull; 
+                                                <span class="text-green-600 font-bold">{{ expandedSerials.length }}</span> locked S/N &bull; 
+                                                <span class="text-amber-600 font-bold">{{ Math.max(0, item.remaining_stock - expandedSerials.length) }}</span> unlinked
+                                            </p>
+                                        </div>
+                                        
+                                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                                            <!-- Locked Serial Numbers -->
+                                            <div v-for="sn in expandedSerials" :key="sn" class="flex items-center justify-between p-2.5 bg-gray-50 border border-gray-200 rounded-lg">
+                                                <div class="flex items-center gap-2 text-gray-700">
+                                                    <svg class="w-4 h-4 text-green-600" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clip-rule="evenodd"></path></svg>
+                                                    <span class="font-mono text-sm font-semibold">{{ sn }}</span>
+                                                </div>
+                                                <span class="text-[10px] uppercase font-bold text-gray-400 bg-white px-2 py-0.5 rounded border border-gray-200">Locked</span>
+                                            </div>
+                                            
+                                            <!-- Empty Inputs for Unlinked Stock -->
+                                            <div v-for="i in Math.max(0, item.remaining_stock - expandedSerials.length)" :key="'empty-'+i" class="flex items-center gap-2">
+                                                <input v-model="newSerialsInput[i]" @keyup.enter="saveRowSn(item.part_number, i)" type="text" placeholder="Scan or type S/N..." class="flex-1 p-2.5 border border-blue-200 rounded-lg font-mono text-sm outline-none focus:ring-2 focus:ring-[#0071e3] bg-white shadow-sm transition">
+                                                <button @click="saveRowSn(item.part_number, i)" class="bg-[#0071e3] hover:bg-[#005bb5] text-white px-4 py-2.5 rounded-lg text-sm font-bold shadow-sm transition">Save</button>
+                                            </div>
+                                        </div>
+                                        
+                                        <div v-if="item.remaining_stock === 0" class="text-sm text-gray-500 italic p-3 text-center bg-gray-50 rounded-lg border border-dashed border-gray-300">
+                                            There is no stock available for this part.
+                                        </div>
+                                    </div>
+                                </td>
+                            </tr>
+                        </template>
+                        <tr v-if="filteredStock.length === 0">
+                            <td colspan="9" class="p-12 text-center text-gray-400 font-medium">No parts found matching your criteria.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- MODULE 2: Import Shipments -->
+        <div v-show="activeTab === 'upload'" class="bg-white rounded-2xl smooth-shadow border border-gray-100 p-8 max-w-4xl mx-auto no-print">
+            <h2 class="text-2xl font-bold tracking-tight text-gray-900 mb-2">Import Shipments</h2>
+            <p class="text-sm text-gray-500 mb-8">Upload an Excel file (.xls) or paste raw text from Apple PDFs to auto-extract AWB and part data.</p>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
+                <div class="border-2 border-dashed border-gray-200 rounded-2xl p-8 text-center bg-gray-50/50 hover:bg-gray-50 transition">
+                    <div class="mx-auto w-12 h-12 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mb-4">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
+                    </div>
+                    <p class="font-semibold text-gray-900 mb-2">Upload Excel File</p>
+                    <input type="file" accept=".xls,.xlsx" @change="uploadAppleExcel" class="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 transition cursor-pointer" />
+                </div>
+                <div class="flex flex-col justify-between">
+                    <div>
+                        <p class="font-semibold text-gray-900 mb-2">Smart Paste PDF Text</p>
+                        <textarea v-model="rawPDFText" rows="5" placeholder="Highlight and paste PDF text here..." class="w-full p-4 border border-gray-200 rounded-xl font-mono text-xs bg-gray-50 text-gray-700 resize-none"></textarea>
+                    </div>
+                    <button @click="parseAppleText" class="mt-4 w-full bg-slate-900 hover:bg-black text-white font-semibold py-3 rounded-xl transition shadow-sm">Extract Typed Data</button>
+                </div>
+            </div>
+
+            <div v-if="parsedItems.length > 0" class="border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
+                <div class="bg-blue-50/50 p-4 border-b border-gray-200 flex justify-between items-center">
+                    <span class="font-bold text-blue-900 flex items-center gap-2">AWB: {{ parsedAwb }}</span>
+                    <span class="text-xs font-bold bg-white text-blue-700 px-3 py-1 rounded-full border border-blue-100 shadow-sm">{{ parsedItems.length }} parts found</span>
+                </div>
+                <table class="w-full text-left text-sm">
+                    <thead>
+                        <tr class="bg-gray-50 text-gray-500 border-b border-gray-100 text-xs uppercase tracking-wider">
+                            <th class="p-3 pl-6 font-semibold">Part Number</th>
+                            <th class="p-3 font-semibold">Serial Number</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-100">
+                        <tr v-for="(item, idx) in parsedItems" :key="idx" class="hover:bg-gray-50">
+                            <td class="p-3 pl-6 font-mono font-bold text-gray-800">{{ item.partNumber }}</td>
+                            <td class="p-3 font-mono text-blue-600 text-xs">{{ item.serialNumber || 'N/A' }}</td>
+                        </tr>
+                    </tbody>
+                </table>
+                <div class="p-5 bg-gray-50 text-right border-t border-gray-100">
+                    <button @click="submitParsedList" :disabled="isSaving" class="bg-[#0071e3] hover:bg-[#005bb5] text-white px-8 py-2.5 rounded-full font-semibold shadow-sm transition">
+                        {{ isSaving ? 'Saving...' : 'Confirm & Save' }}
+                    </button>
+                </div>
+            </div>
+            <div v-if="successMsg && activeTab === 'upload'" class="mt-6 flex items-center gap-3 p-4 bg-green-50 text-green-800 rounded-xl border border-green-100 font-medium">{{ successMsg }}</div>
+        </div>
+
+        <!-- MODULE 3: AWB Tracker -->
+        <div v-show="activeTab === 'awb'" class="bg-white rounded-2xl smooth-shadow border border-gray-100 p-8 no-print">
+            <div class="flex justify-between items-center mb-8">
+                <h2 class="text-2xl font-bold tracking-tight text-gray-900">Shipment Tracker</h2>
+                <button @click="fetchAWBs" class="bg-white border border-gray-200 px-4 py-2.5 rounded-xl text-sm hover:bg-gray-50 font-semibold shadow-sm text-gray-700 transition">Refresh</button>
+            </div>
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div v-for="awb in awbList" :key="awb.awb_number" class="border border-gray-200 rounded-2xl p-6 bg-white shadow-sm hover:shadow-md transition">
+                    <div class="flex justify-between items-start mb-4">
+                        <h3 class="text-xl font-bold text-gray-900">AWB {{ awb.awb_number }}</h3>
+                        <span v-if="awb.received_parts === awb.total_parts" class="bg-green-100 text-green-700 text-xs font-bold px-3 py-1 rounded-full">Completed</span>
+                        <span v-else class="bg-blue-100 text-blue-700 text-xs font-bold px-3 py-1 rounded-full">In Transit</span>
+                    </div>
+                    <div class="w-full bg-gray-100 rounded-full h-2 mb-5 overflow-hidden">
+                        <div class="bg-[#0071e3] h-full transition-all duration-500 ease-out" :style="{ width: Math.round((awb.received_parts / awb.total_parts) * 100) + '%' }"></div>
+                    </div>
+                    <div class="border-t border-gray-100 pt-4 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
+                        <div v-for="item in awb.items" class="flex justify-between items-center py-2 border-b border-gray-50 last:border-0 text-sm">
+                            <span class="font-mono font-medium text-gray-800">{{ item.part }} <span class="text-gray-400 text-xs ml-1">{{ item.sn ? `(${item.sn})` : '' }}</span></span>
+                            <span class="font-semibold text-xs" :class="item.status === 'RECEIVED' ? 'text-green-600' : 'text-amber-500'">{{ item.status === 'RECEIVED' ? '✓ Received' : 'Pending' }}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- MODULE 4: Receive Parts -->
+        <div v-show="activeTab === 'receive'" class="bg-white rounded-2xl smooth-shadow border border-gray-100 p-8 max-w-4xl mx-auto no-print">
+            <h2 class="text-2xl font-bold tracking-tight text-gray-900 mb-2">Receive Parts</h2>
+            <div class="flex space-x-3 mb-8 mt-6">
+                <input v-model="receiveSearch" @keyup.enter="searchExpected" type="text" placeholder="Scan Barcode (S/N or Part Number)..." class="flex-1 p-4 bg-gray-50 border border-gray-200 rounded-xl font-mono text-lg outline-none focus:ring-2 focus:ring-[#0071e3]">
+                <button @click="searchExpected" class="bg-slate-900 hover:bg-black text-white px-8 py-4 rounded-xl font-bold shadow-sm transition">Search</button>
+            </div>
+
+            <div v-if="expectedItems.length > 0" class="space-y-4">
+                <div v-for="item in expectedItems" :key="item.id" class="p-6 border border-[#0071e3]/20 rounded-2xl bg-blue-50/20 flex flex-col md:flex-row gap-6 items-start md:items-center justify-between shadow-sm">
+                    <div class="flex-1 w-full">
+                        <span class="bg-blue-100 text-blue-800 text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wide">AWB: {{ item.awb_number }}</span>
+                        <p class="font-mono font-extrabold text-2xl text-gray-900 mb-4 mt-2">{{ item.part_number }}</p>
+                        <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Serial Number</label>
+                        <input v-model="item.serial_number" type="text" placeholder="Optional S/N..." class="w-full p-2.5 border border-gray-300 rounded-lg font-mono text-sm outline-none focus:ring-2 focus:ring-[#0071e3] bg-white">
+                    </div>
+                    <div class="flex flex-col space-y-3 w-full md:w-56 shrink-0">
+                        <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Classification</label>
+                        <select v-model="item.classification" class="w-full p-2.5 border border-gray-300 rounded-lg text-sm bg-white font-semibold text-gray-700 outline-none focus:ring-2 focus:ring-[#0071e3]">
+                            <option value="REFILLED">Refilled Stock</option>
+                            <option value="NEW_SEED">New Seed Stock</option>
+                            <option value="CUSTOMER_SPECIFIC">Customer Specific</option>
+                        </select>
+                        <button @click="markReceived(item)" class="w-full bg-[#0071e3] hover:bg-[#005bb5] text-white px-4 py-3 rounded-lg font-bold shadow-md transition">Check In Part</button>
+                    </div>
+                </div>
+            </div>
+            <div v-if="successMsg && activeTab === 'receive'" class="mt-6 flex items-center gap-3 p-4 bg-green-50 text-green-800 rounded-xl border border-green-100 font-medium">{{ successMsg }}</div>
+        </div>
+
+        <!-- MODULE 5: Use Parts -->
+        <div v-show="activeTab === 'use'" class="bg-white rounded-2xl smooth-shadow border border-gray-100 p-8 max-w-2xl mx-auto no-print">
+            <h2 class="text-2xl font-bold tracking-tight text-gray-900 mb-6">Record Part Usage</h2>
+            
+            <div v-if="!useForm.partNumber" class="mb-2">
+                <div class="flex space-x-3">
+                    <input v-model="useSearch" @keyup.enter="findPartToUse" type="text" placeholder="Scan Barcode..." class="flex-1 p-4 bg-gray-50 border border-gray-200 rounded-xl font-mono text-lg outline-none focus:ring-2 focus:ring-[#0071e3]">
+                    <button @click="findPartToUse" class="bg-slate-900 hover:bg-black text-white px-8 py-4 rounded-xl font-bold transition shadow-sm">Locate</button>
+                </div>
+                <p v-if="useSearchError" class="text-red-600 text-sm mt-3 font-medium">{{ useSearchError }}</p>
+            </div>
+
+            <form @submit.prevent="usePart" class="space-y-6" v-if="useForm.partNumber">
+                <div class="p-5 bg-gray-50 border border-gray-200 rounded-xl flex justify-between items-center shadow-sm">
+                    <div>
+                        <p class="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Target Component</p>
+                        <p class="font-mono font-extrabold text-2xl text-slate-900">{{ useForm.partNumber }}</p>
+                    </div>
+                    <button type="button" @click="resetUseForm" class="text-sm text-[#0071e3] font-semibold hover:underline">Change Part</button>
+                </div>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                        <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-2">Repair ID</label>
+                        <input v-model="useForm.repairId" type="text" required class="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl font-semibold text-gray-900 outline-none focus:ring-2 focus:ring-[#0071e3]">
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-2">Technician ID</label>
+                        <input v-model="useForm.technician" type="text" required class="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl font-semibold text-gray-900 outline-none focus:ring-2 focus:ring-[#0071e3]">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-2">Assign Serial Number</label>
+                    <select v-if="availableSerials.length > 0" v-model="useForm.serialNumber" class="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl font-mono text-sm text-gray-900 outline-none focus:ring-2 focus:ring-[#0071e3] cursor-pointer">
+                        <option value="">-- Non-Serialized --</option>
+                        <option v-for="sn in availableSerials" :value="sn">{{ sn }}</option>
+                    </select>
+                    <div v-else class="p-3 bg-gray-50 border border-gray-200 rounded-xl"><p class="text-sm text-gray-500 italic">No serialized units available. Logging as non-serialized.</p></div>
+                </div>
+                
+                <button type="submit" class="w-full bg-slate-900 hover:bg-black text-white p-4 rounded-xl font-bold shadow-md transition text-lg">Submit Log</button>
+            </form>
+            <div v-if="successMsg && activeTab === 'use'" class="mt-6 flex items-center gap-3 p-4 bg-green-50 text-green-800 rounded-xl border border-green-100 font-medium">{{ successMsg }}</div>
+        </div>
+
+        <!-- MODULE 6: Combined Reports -->
+        <div v-show="activeTab === 'reports'" class="bg-white rounded-2xl smooth-shadow border border-gray-100 p-8">
+            <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-8 gap-6 no-print border-b border-gray-100 pb-6">
+                <div class="flex items-center space-x-4">
+                    <h2 class="text-2xl font-bold tracking-tight text-gray-900">Audit Reports</h2>
+                    <select v-model="reportType" class="p-2 border border-gray-200 rounded-full bg-gray-50 font-semibold text-slate-800 outline-none focus:ring-2 focus:ring-slate-900 text-sm">
+                        <option value="receiving">Receiving History</option>
+                        <option value="usage">Usage History</option>
+                    </select>
+                </div>
+                <div class="flex flex-wrap items-center gap-3 bg-gray-50 p-2 rounded-2xl border border-gray-200">
+                    <div class="flex items-center gap-2 px-2"><label class="text-xs font-bold text-gray-500 uppercase">From</label><input v-model="reportStart" type="date" class="p-1.5 bg-transparent border-none text-sm font-medium outline-none"></div>
+                    <div class="w-px h-6 bg-gray-300"></div>
+                    <div class="flex items-center gap-2 px-2"><label class="text-xs font-bold text-gray-500 uppercase">To</label><input v-model="reportEnd" type="date" class="p-1.5 bg-transparent border-none text-sm font-medium outline-none"></div>
+                    <button @click="fetchDataForReports" class="bg-white border border-gray-200 px-4 py-2 rounded-xl text-sm hover:bg-gray-50 font-bold shadow-sm transition ml-2">Fetch</button>
+                    <button @click="printPage" class="bg-slate-900 hover:bg-black text-white px-4 py-2 rounded-xl text-sm font-bold shadow-sm transition">Print</button>
+                </div>
+            </div>
+
+            <!-- VIEW A: Receiving Table -->
+            <div v-if="reportType === 'receiving'" class="overflow-x-auto rounded-xl border border-gray-100">
+                <table class="w-full text-left whitespace-nowrap print-only-table">
+                    <thead>
+                        <tr class="bg-gray-50/80 text-gray-500 text-xs uppercase tracking-wider border-b border-gray-100">
+                            <th class="p-4 font-semibold">Date Received</th>
+                            <th class="p-4 font-semibold">AWB Number</th>
+                            <th class="p-4 font-semibold">Part Details</th>
+                            <th class="p-4 font-semibold">Serial Number</th>
+                            <th class="p-4 font-semibold">Classification</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-100">
+                        <tr v-for="item in filteredReceiving" :key="item.id" class="hover:bg-gray-50/50 transition text-sm text-gray-700">
+                            <td class="p-4 font-medium">{{ new Date(item.received_at).toLocaleDateString() }}</td>
+                            <td class="p-4 font-bold text-gray-900">{{ item.awb_number }}</td>
+                            <td class="p-4"><span class="font-mono font-bold text-gray-900 block">{{ item.part_number }}</span><span class="text-gray-500 text-xs mt-0.5 block">{{ item.description }}</span></td>
+                            <td class="p-4 font-mono text-blue-600 font-medium">{{ item.serial_number || 'N/A' }}</td>
+                            <td class="p-4 font-semibold text-gray-600">{{ item.classification ? item.classification.replace('_', ' ') : 'N/A' }}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- VIEW B: Usage Table -->
+            <div v-if="reportType === 'usage'" class="overflow-x-auto rounded-xl border border-gray-100">
+                <table class="w-full text-left whitespace-nowrap print-only-table">
+                    <thead>
+                        <tr class="bg-gray-50/80 text-gray-500 text-xs uppercase tracking-wider border-b border-gray-100">
+                            <th class="p-4 font-semibold">Date Used</th>
+                            <th class="p-4 font-semibold">Repair ID</th>
+                            <th class="p-4 font-semibold">Part Details</th>
+                            <th class="p-4 font-semibold">Serial Number</th>
+                            <th class="p-4 font-semibold">Technician</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-100">
+                        <tr v-for="item in filteredUsage" :key="item.id" class="hover:bg-gray-50/50 transition text-sm text-gray-700">
+                            <td class="p-4 font-medium">{{ new Date(item.used_at).toLocaleDateString() }}</td>
+                            <td class="p-4 font-bold text-gray-900">{{ item.repair_id }}</td>
+                            <td class="p-4"><span class="font-mono font-bold text-gray-900 block">{{ item.part_number }}</span><span class="text-gray-500 text-xs mt-0.5 block">{{ item.description }}</span></td>
+                            <td class="p-4 font-mono text-blue-600 font-medium">{{ item.serial_number || 'N/A' }}</td>
+                            <td class="p-4 font-semibold text-gray-600">{{ item.technician }}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+
+    <!-- Modal 1: Create a Reservation -->
+    <div v-if="showReserveModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/40 backdrop-blur-sm transition-opacity">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden transform transition-all">
+            <div class="p-6 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
+                <h3 class="text-lg font-bold text-gray-900">Reserve Part</h3>
+                <button @click="showReserveModal = false" class="text-gray-400 hover:text-gray-600 transition">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+            </div>
+            <div class="p-6 space-y-5">
+                <div>
+                    <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Selected Part Number</label>
+                    <p class="font-mono font-extrabold text-xl text-slate-900">{{ reserveForm.partNumber }}</p>
+                </div>
+                <div>
+                    <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Customer Name</label>
+                    <input v-model="reserveForm.customerName" type="text" placeholder="e.g. John Doe" class="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-semibold outline-none focus:ring-2 focus:ring-[#0071e3]">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Device Serial Number</label>
+                    <input v-model="reserveForm.deviceSn" type="text" placeholder="e.g. C02ABCDEF" class="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-mono font-semibold outline-none focus:ring-2 focus:ring-[#0071e3]">
+                </div>
+            </div>
+            <div class="p-6 border-t border-gray-100 bg-gray-50 flex justify-end gap-3">
+                <button @click="showReserveModal = false" class="px-5 py-2.5 rounded-xl text-sm font-bold text-gray-600 hover:bg-gray-200 transition">Cancel</button>
+                <button @click="submitReservation" :disabled="!reserveForm.customerName || !reserveForm.deviceSn" class="px-5 py-2.5 rounded-xl text-sm font-bold text-white bg-[#0071e3] hover:bg-[#005bb5] disabled:opacity-50 transition shadow-sm">Confirm Reservation</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal 2: View Active Reservations -->
+    <div v-if="showViewModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/40 backdrop-blur-sm transition-opacity">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden transform transition-all flex flex-col max-h-[80vh]">
+            <div class="p-6 border-b border-gray-100 bg-gray-50 flex justify-between items-center shrink-0">
+                <div>
+                    <h3 class="text-lg font-bold text-gray-900">Active Reservations</h3>
+                    <p class="text-xs text-gray-500 font-mono mt-0.5">{{ viewModalPart }}</p>
+                </div>
+                <button @click="showViewModal = false" class="text-gray-400 hover:text-gray-600 transition">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+            </div>
+            <div class="overflow-y-auto p-6">
+                <div v-if="activeReservations.length === 0" class="text-center text-gray-500 font-medium py-8">No active reservations for this part.</div>
+                <div v-else class="space-y-4">
+                    <div v-for="res in activeReservations" :key="res.id" class="border border-gray-200 rounded-xl p-4 flex justify-between items-center bg-white shadow-sm hover:border-[#0071e3]/30 transition">
+                        <div>
+                            <p class="font-bold text-gray-900 text-sm mb-1">{{ res.customer_name }}</p>
+                            <p class="text-xs text-gray-500">Device S/N: <span class="font-mono text-gray-700 font-semibold">{{ res.device_sn }}</span></p>
+                            <p class="text-[10px] text-gray-400 mt-1">Reserved: {{ new Date(res.created_at).toLocaleDateString() }}</p>
+                        </div>
+                        <button @click="clearReservation(res.id)" class="text-xs font-bold text-red-600 hover:text-red-800 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg border border-red-100 transition">Clear Reservation</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+const { createApp } = Vue;
+createApp({
+    data() {
+        return {
+            activeTab: 'report', stock: [], availableSerials: [], successMsg: '', isSaving: false,
+            searchQuery: '', modelFilter: '', receiveSearch: '', expectedItems: [], searched: false,
+            useSearch: '', useSearchError: '', useForm: { repairId: '', partNumber: '', serialNumber: '', technician: '' },
+            rawPDFText: '', parsedAwb: '', parsedItems: [], awbList: [], reportType: 'receiving', 
+            reportStart: '', reportEnd: '', historyList: [], usageList: [],
+            
+            showReserveModal: false, showViewModal: false, viewModalPart: '',
+            activeReservations: [], reserveForm: { partNumber: '', customerName: '', deviceSn: '' },
+            
+            // Accordion Dropdown State
+            expandedRow: null,
+            expandedSerials: [],
+            newSerialsInput: {} 
+        }
+    },
+    computed: {
+        uniqueModels() {
+            if(!Array.isArray(this.stock)) return [];
+            return [...new Set(this.stock.map(s => s.model).filter(m => m && m.trim() !== ''))].sort();
+        },
+        filteredStock() {
+            if(!Array.isArray(this.stock)) return [];
+            return this.stock.filter(item => {
+                const matchesSearch = !this.searchQuery || (item.part_number && item.part_number.toLowerCase().includes(this.searchQuery.toLowerCase()));
+                const matchesModel = !this.modelFilter || item.model === this.modelFilter;
+                return matchesSearch && matchesModel;
+            });
+        },
+        filteredReceiving() {
+            if(!Array.isArray(this.historyList)) return [];
+            return this.historyList.filter(item => {
+                if (!this.reportStart && !this.reportEnd) return true;
+                const itemDate = new Date(item.received_at).setHours(0,0,0,0);
+                const start = this.reportStart ? new Date(this.reportStart).setHours(0,0,0,0) : -Infinity;
+                const end = this.reportEnd ? new Date(this.reportEnd).setHours(23,59,59,999) : Infinity;
+                return itemDate >= start && itemDate <= end;
+            });
+        },
+        filteredUsage() {
+            if(!Array.isArray(this.usageList)) return [];
+            return this.usageList.filter(item => {
+                if (!this.reportStart && !this.reportEnd) return true;
+                const itemDate = new Date(item.used_at).setHours(0,0,0,0);
+                const start = this.reportStart ? new Date(this.reportStart).setHours(0,0,0,0) : -Infinity;
+                const end = this.reportEnd ? new Date(this.reportEnd).setHours(23,59,59,999) : Infinity;
+                return itemDate >= start && itemDate <= end;
+            });
+        }
+    },
+    mounted() { this.fetchStock(); this.fetchAWBs(); this.fetchDataForReports(); },
+    methods: {
+        printPage() { window.print(); },
+        async fetchDataForReports() { await Promise.all([this.fetchHistory(), this.fetchUsage()]); },
+        
+        async fetchStock() {
+            try { 
+                const res = await fetch('/api/stock'); 
+                const data = await res.json(); 
+                if (res.ok && Array.isArray(data)) {
+                    this.stock = data;
+                } else {
+                    console.error("DB Error:", data.error);
+                    this.stock = [];
+                }
+            } catch(e) { this.stock = []; }
+        },
+        async fetchAWBs() {
+            try { const res = await fetch('/api/awb-status'); const data = await res.json(); this.awbList = res.ok && Array.isArray(data) ? data : []; } catch(e) { this.awbList = []; }
+        },
+        async fetchHistory() {
+            try { const res = await fetch('/api/received-history'); const data = await res.json(); this.historyList = res.ok && Array.isArray(data) ? data : []; } catch(e) { this.historyList = []; }
+        },
+        async fetchUsage() {
+            try { const res = await fetch('/api/usage-history'); const data = await res.json(); this.usageList = res.ok && Array.isArray(data) ? data : []; } catch(e) { this.usageList = []; }
+        },
+        async fetchSerials() {
+            const res = await fetch(`/api/serials/${this.useForm.partNumber}`);
+            this.availableSerials = await res.json();
+        },
+
+        // --- NEW ACCORDION METHODS ---
+        async toggleExpand(item) {
+            // Close if clicking the same row again
+            if (this.expandedRow === item.part_number) {
+                this.expandedRow = null;
+                return;
+            }
+            // Open and fetch serials
+            this.expandedRow = item.part_number;
+            this.newSerialsInput = {}; // Clear previous inputs
+            
+            const res = await fetch(`/api/serials/${encodeURIComponent(item.part_number)}`);
+            this.expandedSerials = await res.json();
+        },
+        async saveRowSn(partNumber, index) {
+            const serialNumber = this.newSerialsInput[index];
+            if (!serialNumber || !serialNumber.trim()) return;
+
+            await fetch('/api/add-legacy-sn', { 
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, 
+                body: JSON.stringify({ partNumber, serialNumber: serialNumber.trim() }) 
+            });
+
+            this.newSerialsInput[index] = ''; // Clear the input box
+            
+            // Refresh the expanded dropdown list and stock numbers
+            const res = await fetch(`/api/serials/${encodeURIComponent(partNumber)}`);
+            this.expandedSerials = await res.json();
+            this.fetchStock(); 
+        },
+
+        // --- RESERVATION METHODS ---
+        openReserveModal(partNumber) {
+            this.reserveForm = { partNumber: partNumber, customerName: '', deviceSn: '' };
+            this.showReserveModal = true;
+        },
+        async submitReservation() {
+            await fetch('/api/reserve', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.reserveForm) });
+            this.showReserveModal = false; this.fetchStock();
+        },
+        async viewReservations(partNumber) {
+            this.viewModalPart = partNumber;
+            const res = await fetch(`/api/reservations/${encodeURIComponent(partNumber)}`);
+            this.activeReservations = await res.json();
+            this.showViewModal = true;
+        },
+        async clearReservation(id) {
+            if(!confirm("Clear this reservation?")) return;
+            await fetch('/api/unreserve', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
+            const res = await fetch(`/api/reservations/${encodeURIComponent(this.viewModalPart)}`);
+            this.activeReservations = await res.json();
+            if(this.activeReservations.length === 0) this.showViewModal = false;
+            this.fetchStock();
+        },
+
+        async findPartToUse() {
+            this.useSearchError = ''; const q = this.useSearch.trim(); if(!q) return;
+            const stockItem = this.stock.find(s => s.part_number.toLowerCase() === q.toLowerCase());
+            if (stockItem) {
+                this.useForm.partNumber = stockItem.part_number;
+                await this.fetchSerials(); this.useForm.serialNumber = ''; 
+            } else {
+                const res = await fetch(`/api/identify-sn/${encodeURIComponent(q)}`);
+                const data = await res.json();
+                if (data.part_number) {
+                    this.useForm.partNumber = data.part_number;
+                    await this.fetchSerials(); this.useForm.serialNumber = q; 
+                } else { this.useSearchError = "Part Number or Serial Number not found in received stock."; }
+            }
+        },
+        resetUseForm() {
+            this.useForm = { repairId: '', partNumber: '', serialNumber: '', technician: '' };
+            this.useSearch = ''; this.useSearchError = ''; this.availableSerials = [];
+        },
+        uploadAppleExcel(event) {
+            const file = event.target.files[0]; if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const workbook = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+                this.rawPDFText = XLSX.utils.sheet_to_csv(workbook.Sheets[workbook.SheetNames[0]]);
+                this.parseAppleText(); event.target.value = '';
+            };
+            reader.readAsArrayBuffer(file);
+        },
+        parseAppleText() {
+            this.parsedItems = []; this.parsedAwb = ''; const text = this.rawPDFText; if (!text) return;
+            const awbMatch = text.match(/HAWB[^\d]*(\d+)/i); if (awbMatch) this.parsedAwb = awbMatch[1];
+            const matches = [...text.matchAll(/([A-Z0-9]*661-\d{4,5})/g)];
+            matches.forEach((match, index) => {
+                const blockText = text.substring(match.index + match[1].length, matches[index + 1] ? matches[index + 1].index : text.length);
+                const snMatch = blockText.match(/S\/N[,\s:]+([A-Z0-9]{8,15})/i);
+                this.parsedItems.push({ awb: this.parsedAwb || 'UNKNOWN_AWB', partNumber: match[1], serialNumber: snMatch ? snMatch[1] : null, qty: 1 });
+            });
+        },
+        async submitParsedList() {
+            if(this.parsedItems.length > 0) {
+                this.isSaving = true;
+                const res = await fetch('/api/upload-packing-list', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ items: this.parsedItems }) });
+                this.isSaving = false;
+                if (!res.ok) return alert("Database Error: " + (await res.json()).error);
+                this.successMsg = `Loaded ${this.parsedItems.length} expected parts!`;
+                this.rawPDFText = ''; this.parsedItems = [];
+                this.fetchAWBs(); this.fetchStock(); setTimeout(() => this.successMsg = '', 5000);
+            }
+        },
+        async searchExpected() {
+            if(!this.receiveSearch) return;
+            const res = await fetch(`/api/expected/${encodeURIComponent(this.receiveSearch.trim())}`);
+            this.expectedItems = (await res.json()).map(item => ({ ...item, classification: 'REFILLED' }));
+            this.searched = true;
+        },
+        async markReceived(item) {
+            await fetch('/api/mark-received', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ id: item.id, classification: item.classification, serialNumber: item.serial_number }) });
+            this.expectedItems = this.expectedItems.filter(i => i.id !== item.id);
+            this.successMsg = 'Part checked in!';
+            this.fetchStock(); this.fetchAWBs(); this.fetchDataForReports();
+            if(this.expectedItems.length === 0) { this.receiveSearch = ''; this.searched = false; }
+            setTimeout(() => this.successMsg = '', 3000);
+        },
+        async usePart() {
+            const res = await fetch('/api/use', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(this.useForm) });
+            if (!res.ok) return alert("Error Saving Usage: " + (await res.json()).error);
+            this.successMsg = 'Usage recorded successfully!';
+            this.resetUseForm(); this.fetchStock(); this.fetchDataForReports(); 
+            setTimeout(() => this.successMsg = '', 3000);
+        }
+    }
+}).mount('#app')
+</script>
+</body>
+</html>
