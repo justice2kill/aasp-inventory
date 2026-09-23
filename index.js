@@ -20,7 +20,7 @@ fastify.get("/api/stock", async (request, reply) => {
     const query = `
       SELECT 
         p.part_number, p.model, p.description, p.base_seed_qty as current_seed_qty,
-        (SELECT COUNT(*) FROM shipment_items s WHERE s.part_number = p.part_number AND s.status = 'RECEIVED' AND (s.classification IS NULL OR (s.classification != 'LEGACY_SEED' AND s.classification != 'FOC'))) as total_refilled_received,
+        (SELECT COUNT(*) FROM shipment_items s WHERE s.part_number = p.part_number AND s.status = 'RECEIVED' AND (s.classification IS NULL OR s.classification::text NOT IN ('LEGACY_SEED', 'FOC'))) as total_refilled_received,
         (SELECT COUNT(*) FROM usage_logs u WHERE u.part_number = p.part_number) as total_used,
         (SELECT COUNT(*) FROM reservations r WHERE r.part_number = p.part_number AND r.status = 'RESERVED') as total_reserved
       FROM parts p
