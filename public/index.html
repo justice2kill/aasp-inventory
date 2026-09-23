@@ -459,10 +459,8 @@ createApp({
             useSearch: '', useSearchError: '', useForm: { repairId: '', partNumber: '', serialNumber: '', technician: '' },
             rawPDFText: '', parsedAwb: '', parsedItems: [], awbList: [], reportType: 'receiving', 
             reportStart: '', reportEnd: '', historyList: [], usageList: [],
-            
             showReserveModal: false, showViewModal: false, viewModalPart: '',
             activeReservations: [], reserveForm: { partNumber: '', customerName: '', deviceSn: '' },
-            
             expandedRow: null, expandedSerials: [], newSerialsInput: {} 
         }
     },
@@ -534,27 +532,89 @@ createApp({
                 const res = await fetch(`/api/identify-sn/${encodeURIComponent(q)}`);
                 const data = await res.json();
                 if (data.part_number) {
-                    this.useForm.partNumber = data.part_number;A completely blank white page—often called the "White Screen of Death"—usually means the web application's interface crashed in your browser before it could render, or the server failed to deliver the necessary script files. 
+                    this.useForm.partNumber = data.part_number;
+                    await this.fetchSerials(); this.useForm.serialNumber = q; 
+                } else { this.useSearchError = "Part Number or Serial Number not found in received stock."; }
+            }
+        },
+        resetUseForm() {
+            this.useForm = { repairId: '', partNumber: '', serialNumber: '', technician: '' };
+            this.useSearch = ''; this.useSearchError = ''; this.availableSerials = [];
+        },
+        
+        uploadAppleExcel(event) {
+            const file = event.target.files[0]; if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const workbook = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+                this.rawPDFText = XLSX.utils.sheet_to_csv(workbook.Sheets[workbook.SheetNames[0]]);
+                this.parseAppleText(); event.target.value = '';
+            };
+            reader.readAsArrayBuffer(file);
+        },
+        
+        parseAppleText() {
+            this.parsedItems = []; this.parsedAwb = ''; 
+            const text = this.rawPDFText; if (!text) return;
+            
+            const awbMatch = text.match(/HAWB[^\d]*(\d+)/i) || text.match(/AWB[^\d]*(\d+)/i) || text.match(/Tracking[^\d]*(\d+)/i); 
+            if (awbMatch) this.parsedAwb = awbMatch[1];
+            
+            let globalPo = null;
+            const poMatch = text.match(/(Gnext-SSO[^\s,]+|SSO[^\s,]+|FOC[^\s,]+)/i);
+            if (poMatch) globalPo = poMatch[1];
 
-Here is how to isolate and fix the issue, starting with the fastest solutions:
+            const matches = [...text.matchAll(/([A-Z0-9]*661-\d{4,5})/g)];
+            matches.forEach((match, index) => {
+                const blockText = text.substring(match.index + match[1].length, matches[index + 1] ? matches[index + 1].index : text.length);
+                const snMatch = blockText.match(/S\/N[,\s:]+([A-Z0-9]{8,15})/i);
+                
+                let repairMatch = blockText.match(/(G\d{8,10})/i);
+                if (!repairMatch) repairMatch = text.match(/(G\d{8,10})/i);
+                
+                this.parsedItems.push({ 
+                    awb: this.parsedAwb || 'UNKNOWN_AWB', 
+                    poNumber: globalPo,
+                    partNumber: match[1], 
+                    serialNumber: snMatch ? snMatch[1] : null, 
+                    repairId: repairMatch ? repairMatch[1] : null,
+                    qty: 1 
+                });
+            });
+        },
 
-**1. The Quick Browser Fixes**
-*   **Hard Refresh:** Press **Ctrl + F5** (Windows) or **Cmd + Shift + R** (Mac) to force the browser to fetch a fresh version of the page, bypassing any corrupted cached files.
-*   **Go Incognito:** Open the page in a Private/Incognito window. If it loads perfectly, a browser extension (like an ad-blocker) or a corrupted cookie is blocking SnapDeploy's scripts. 
-*   **Clear Cache:** If Incognito worked, clear your browser's cache and cookies for the SnapDeploy URL.
-
-**2. Check for Hidden Errors (Developer Tools)**
-If the page is still white, your browser knows why, but it's hiding the error. 
-*   Press **F12** (or Right-Click > Inspect) to open Developer Tools.
-*   Click the **Console** tab and refresh the page. Look for **red error text**. 
-    *   *JavaScript errors* usually mean a bug in the app itself.
-    *   *CORS errors* mean there is a security misconfiguration preventing the page from talking to its server.
-*   Click the **Network** tab and refresh. Look for files failing to load (status codes like **404** Not Found or **500** Internal Server Error).
-
-**3. Server & Network Checks (If you are the admin)**
-If the Network tab shows 500-level errors, or if multiple users are seeing the white screen, the issue is on the server side:
-*   **Restart the Service:** If SnapDeploy is hosted on your own server, log in and restart the web service/daemon powering it.
-*   **Check Disk Space:** A server that has run out of disk space will often return blank pages because it cannot write session data or temporary files.
-*   **Check Logs:** Look at the web server error logs (e.g., IIS, Nginx, or Apache) for the specific backend failure.
-
-<FollowUp label="Want help decoding an error message?" query="I found some red text in the Developer Console. How do I interpret these specific error messages?" />
+        async submitParsedList() {
+            if(this.parsedItems.length > 0) {
+                this.isSaving = true;
+                const res = await fetch('/api/upload-packing-list', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ items: this.parsedItems }) });
+                this.isSaving = false;
+                if (!res.ok) return alert("Database Error");
+                this.successMsg = `Loaded ${this.parsedItems.length} expected parts!`;
+                this.rawPDFText = ''; this.parsedItems = []; this.fetchAWBs(); this.fetchStock(); 
+                setTimeout(() => this.successMsg = '', 5000);
+            }
+        },
+        async searchExpected() {
+            if(!this.receiveSearch) return;
+            const res = await fetch(`/api/expected/${encodeURIComponent(this.receiveSearch.trim())}`);
+            this.expectedItems = (await res.json()).map(item => ({ ...item, classification: 'REFILLED' }));
+        },
+        async markReceived(item) {
+            await fetch('/api/mark-received', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ id: item.id, classification: item.classification, serialNumber: item.serial_number }) });
+            this.expectedItems = this.expectedItems.filter(i => i.id !== item.id);
+            this.successMsg = 'Part checked in!'; this.fetchStock(); this.fetchAWBs(); this.fetchDataForReports();
+            if(this.expectedItems.length === 0) this.receiveSearch = ''; 
+            setTimeout(() => this.successMsg = '', 3000);
+        },
+        async usePart() {
+            const res = await fetch('/api/use', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(this.useForm) });
+            if (!res.ok) return alert("Error Saving Usage");
+            this.successMsg = 'Usage recorded successfully!';
+            this.resetUseForm(); this.fetchStock(); this.fetchDataForReports(); 
+            setTimeout(() => this.successMsg = '', 3000);
+        }
+    }
+}).mount('#app')
+</script>
+</body>
+</html>
