@@ -143,7 +143,32 @@ fastify.post("/api/use", async (request, reply) => {
   } catch (err) { return reply.code(500).send({ error: err.message }); }
 });
 
-// UPDATED: Now fetches po_number into the items array
+// NEW: Bulk Usage Endpoint
+fastify.post("/api/bulk-use", async (request, reply) => {
+  try {
+    const items = request.body.items;
+    let addedCount = 0;
+    for (let item of items) {
+      if (!item.partNumber) continue; // Skip blank rows
+      
+      // Force part to exist first so database doesn't reject it
+      const partQuery = `INSERT INTO parts (part_number, product, model, description, base_seed_qty) VALUES ($1, 'Unknown', 'Unknown', 'Auto-added from Bulk Usage', 0) ON CONFLICT (part_number) DO NOTHING`;
+      await pool.query(partQuery, [item.partNumber.toString().trim()]);
+      
+      // Insert the usage log
+      const query = `INSERT INTO usage_logs (repair_id, device_serial, part_number, serial_number, technician) VALUES ($1, 'UNKNOWN', $2, $3, $4)`;
+      await pool.query(query, [
+        item.repairId ? item.repairId.toString().trim() : 'UNKNOWN_REPAIR', 
+        item.partNumber.toString().trim(), 
+        item.serialNumber ? item.serialNumber.toString().trim() : null, 
+        item.technician ? item.technician.toString().trim() : 'TECH'
+      ]);
+      addedCount++;
+    }
+    return { success: true, addedCount };
+  } catch (err) { return reply.code(500).send({ error: err.message }); }
+});
+
 fastify.get("/api/awb-status", async (request, reply) => {
   try {
     const query = `

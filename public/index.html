@@ -45,12 +45,12 @@
     </header>
 
     <main class="flex-grow max-w-[90rem] mx-auto w-full p-6 pt-8">
+        
         <!-- Stock Report -->
         <div v-show="activeTab === 'report'" class="bg-white rounded-2xl smooth-shadow border border-gray-100 p-8">
             <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4 no-print">
                 <div>
                     <h2 class="text-2xl font-bold tracking-tight text-gray-900">Live Stock Balance</h2>
-                    <p class="text-sm text-gray-500 mt-1">FOC consumables are tracked in history but excluded from quantities.</p>
                 </div>
                 <div class="flex items-center space-x-3 w-full md:w-auto">
                     <label class="flex items-center gap-2 text-sm font-medium text-gray-600 bg-white border border-gray-200 px-3 py-2.5 rounded-xl cursor-pointer hover:bg-gray-50 shadow-sm transition">
@@ -63,6 +63,8 @@
                     </select>
                     <input v-model="searchQuery" type="text" placeholder="Search Part Number..." class="p-2.5 border border-gray-200 rounded-xl w-full md:w-64 text-sm font-mono bg-gray-50 text-gray-700">
                     <button @click="fetchStock" class="bg-white border border-gray-200 px-4 py-2.5 rounded-xl text-sm hover:bg-gray-50 font-semibold shadow-sm text-gray-700 transition">Refresh</button>
+                    <button @click="printPage" class="bg-slate-900 hover:bg-black text-white px-4 py-2.5 rounded-xl text-sm font-bold shadow-sm transition">Print</button>
+                    <button @click="exportStock" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2.5 rounded-xl text-sm font-bold shadow-sm transition">Excel</button>
                 </div>
             </div>
             
@@ -72,11 +74,9 @@
                         <tr class="bg-gray-50/80 text-gray-500 text-xs uppercase tracking-wider border-b border-gray-100">
                             <th class="p-4 font-semibold">Part Number</th>
                             <th class="p-4 font-semibold">Model & Description</th>
-                            <!-- HIDDEN/SHOWN COLUMNS -->
                             <th v-if="showDetails" class="p-4 font-semibold text-center text-gray-400 border-l border-gray-200">Seed</th>
                             <th v-if="showDetails" class="p-4 font-semibold text-center text-gray-400">Refilled</th>
                             <th v-if="showDetails" class="p-4 font-semibold text-center text-gray-400 border-r border-gray-200">Used</th>
-                            <!-- END -->
                             <th class="p-4 font-semibold text-center bg-gray-100/50">Physical In-Stock</th>
                             <th class="p-4 font-semibold text-center text-amber-600">Reserved</th>
                             <th class="p-4 font-bold text-gray-900 text-center">Available</th>
@@ -96,11 +96,9 @@
                                     <div class="text-sm font-bold text-gray-900">{{ item.model }}</div>
                                     <div class="text-[11px] text-gray-500 mt-0.5 whitespace-normal w-48 leading-tight">{{ item.description }}</div>
                                 </td>
-                                <!-- HIDDEN/SHOWN DATA -->
                                 <td v-if="showDetails" class="p-4 text-center text-sm font-medium text-gray-500 border-l border-gray-100">{{ item.current_seed_qty }}</td>
                                 <td v-if="showDetails" class="p-4 text-center text-sm font-medium text-blue-500">+{{ item.total_refilled_received }}</td>
                                 <td v-if="showDetails" class="p-4 text-center text-sm font-medium text-red-400 border-r border-gray-100">-{{ item.total_used }}</td>
-                                <!-- END -->
                                 <td class="p-4 text-center text-sm font-bold text-gray-900 bg-gray-50/30">{{ item.remaining_stock }}</td>
                                 <td class="p-4 text-center">
                                     <button v-if="item.total_reserved > 0" @click="viewReservations(item.part_number)" class="inline-flex items-center justify-center px-3 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-700 hover:bg-amber-200 transition shadow-sm cursor-pointer">{{ item.total_reserved }} Waiting</button>
@@ -231,7 +229,6 @@
                         <div v-for="(item, idx) in awb.items" :key="'item-'+idx" class="flex justify-between items-center py-2 border-b border-gray-50 last:border-0 text-sm">
                             <span class="font-mono font-medium text-gray-800 flex items-center gap-1.5 flex-wrap">
                                 {{ item.part }} 
-                                <!-- UPDATED: Shows Repair ID, or PO Number if no Repair ID is available -->
                                 <span v-if="item.repair_id || item.po_number" class="text-[10px] font-bold bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded border border-amber-200">
                                     {{ item.repair_id || item.po_number }}
                                 </span>
@@ -256,7 +253,6 @@
                 <div v-for="item in expectedItems" :key="item.id" class="p-6 border border-[#0071e3]/20 rounded-2xl bg-blue-50/20 flex flex-col md:flex-row gap-6 items-start md:items-center justify-between shadow-sm">
                     <div class="flex-1 w-full">
                         <div class="flex items-center gap-2 mb-2">
-                            <!-- UPDATED: Made AWB tag much larger and bolder -->
                             <span class="bg-blue-100 text-blue-800 text-sm font-extrabold px-3 py-1 rounded-md uppercase tracking-wide shadow-sm border border-blue-200">AWB: {{ item.awb_number }}</span>
                             <span v-if="item.repair_id" class="bg-amber-100 text-amber-800 text-xs font-bold px-2 py-1 rounded-md uppercase tracking-wide border border-amber-200">Repair: {{ item.repair_id }}</span>
                         </div>
@@ -279,47 +275,62 @@
             <div v-if="successMsg && activeTab === 'receive'" class="mt-6 flex items-center gap-3 p-4 bg-green-50 text-green-800 rounded-xl border border-green-100 font-medium">{{ successMsg }}</div>
         </div>
 
-        <!-- Use Parts -->
-        <div v-show="activeTab === 'use'" class="bg-white rounded-2xl smooth-shadow border border-gray-100 p-8 max-w-2xl mx-auto no-print">
-            <h2 class="text-2xl font-bold tracking-tight text-gray-900 mb-6">Record Part Usage</h2>
+        <!-- NEW: Use Parts with Bulk Upload Layout -->
+        <div v-show="activeTab === 'use'" class="bg-white rounded-2xl smooth-shadow border border-gray-100 p-8 max-w-5xl mx-auto no-print">
+            <h2 class="text-2xl font-bold tracking-tight text-gray-900 mb-8">Record Part Usage</h2>
             
-            <div v-if="!useForm.partNumber" class="mb-2">
-                <div class="flex space-x-3">
-                    <input v-model="useSearch" @keyup.enter="findPartToUse" type="text" placeholder="Scan Barcode..." class="flex-1 p-4 bg-gray-50 border border-gray-200 rounded-xl font-mono text-lg outline-none focus:ring-2 focus:ring-[#0071e3]">
-                    <button @click="findPartToUse" class="bg-slate-900 hover:bg-black text-white px-8 py-4 rounded-xl font-bold transition shadow-sm">Locate</button>
-                </div>
-                <p v-if="useSearchError" class="text-red-600 text-sm mt-3 font-medium">{{ useSearchError }}</p>
-            </div>
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-10">
+                <div class="bg-gray-50/50 p-6 rounded-2xl border border-gray-100">
+                    <h3 class="text-sm font-bold text-gray-400 uppercase tracking-wider mb-5">Manual Entry</h3>
+                    
+                    <div v-if="!useForm.partNumber" class="mb-4">
+                        <input v-model="useSearch" @keyup.enter="findPartToUse" type="text" placeholder="Scan Barcode..." class="w-full p-4 bg-white border border-gray-200 rounded-xl font-mono text-lg outline-none focus:ring-2 focus:ring-[#0071e3] shadow-sm">
+                        <button @click="findPartToUse" class="mt-3 w-full bg-slate-900 hover:bg-black text-white px-8 py-3.5 rounded-xl font-bold transition shadow-sm">Locate Part</button>
+                        <p v-if="useSearchError" class="text-red-600 text-sm mt-3 font-medium">{{ useSearchError }}</p>
+                    </div>
 
-            <form @submit.prevent="usePart" class="space-y-6" v-if="useForm.partNumber">
-                <div class="p-5 bg-gray-50 border border-gray-200 rounded-xl flex justify-between items-center shadow-sm">
-                    <div>
-                        <p class="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Target Component</p>
-                        <p class="font-mono font-extrabold text-2xl text-slate-900">{{ useForm.partNumber }}</p>
-                    </div>
-                    <button type="button" @click="resetUseForm" class="text-sm text-[#0071e3] font-semibold hover:underline">Change Part</button>
+                    <form @submit.prevent="usePart" class="space-y-5" v-if="useForm.partNumber">
+                        <div class="p-5 bg-white border border-gray-200 rounded-xl flex justify-between items-center shadow-sm">
+                            <div>
+                                <p class="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Target Component</p>
+                                <p class="font-mono font-extrabold text-xl text-slate-900">{{ useForm.partNumber }}</p>
+                            </div>
+                            <button type="button" @click="resetUseForm" class="text-sm text-[#0071e3] font-semibold hover:underline">Change</button>
+                        </div>
+                        <div>
+                            <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Repair ID</label>
+                            <input v-model="useForm.repairId" type="text" required class="w-full p-3 bg-white border border-gray-200 rounded-xl font-semibold text-gray-900 outline-none focus:ring-2 focus:ring-[#0071e3] shadow-sm">
+                        </div>
+                        <div>
+                            <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Technician ID</label>
+                            <input v-model="useForm.technician" type="text" required class="w-full p-3 bg-white border border-gray-200 rounded-xl font-semibold text-gray-900 outline-none focus:ring-2 focus:ring-[#0071e3] shadow-sm">
+                        </div>
+                        <div>
+                            <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Assign Serial Number</label>
+                            <select v-if="availableSerials.length > 0" v-model="useForm.serialNumber" class="w-full p-3 bg-white border border-gray-200 rounded-xl font-mono text-sm text-gray-900 outline-none focus:ring-2 focus:ring-[#0071e3] cursor-pointer shadow-sm">
+                                <option value="">-- Non-Serialized --</option>
+                                <option v-for="sn in availableSerials" :key="sn" :value="sn">{{ sn }}</option>
+                            </select>
+                            <div v-else class="p-3 bg-white border border-gray-200 rounded-xl shadow-sm"><p class="text-sm text-gray-500 italic">No serialized units available. Logging as non-serialized.</p></div>
+                        </div>
+                        <button type="submit" class="w-full bg-[#0071e3] hover:bg-[#005bb5] text-white p-3.5 rounded-xl font-bold shadow-md transition text-base mt-2">Submit Log</button>
+                    </form>
                 </div>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div>
-                        <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-2">Repair ID</label>
-                        <input v-model="useForm.repairId" type="text" required class="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl font-semibold text-gray-900 outline-none focus:ring-2 focus:ring-[#0071e3]">
-                    </div>
-                    <div>
-                        <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-2">Technician ID</label>
-                        <input v-model="useForm.technician" type="text" required class="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl font-semibold text-gray-900 outline-none focus:ring-2 focus:ring-[#0071e3]">
+
+                <div class="bg-gray-50/50 p-6 rounded-2xl border border-gray-100 flex flex-col">
+                    <h3 class="text-sm font-bold text-gray-400 uppercase tracking-wider mb-5">Bulk Upload</h3>
+                    <div class="border-2 border-dashed border-gray-200 rounded-2xl p-8 text-center bg-white hover:bg-gray-50 transition flex-grow flex flex-col items-center justify-center shadow-sm">
+                        <div class="mx-auto w-12 h-12 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mb-4">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                        </div>
+                        <p class="font-bold text-gray-900 mb-2">Upload Excel Template</p>
+                        <p class="text-xs text-gray-500 mb-6 px-4">Requires columns: <strong>Repair ID</strong>, <strong>Part Number</strong>, <strong>Serial Number</strong>, and <strong>Technician ID</strong>.</p>
+                        <input type="file" accept=".xls,.xlsx,.csv" @change="uploadBulkUseExcel" class="w-full max-w-xs text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 transition cursor-pointer" />
                     </div>
                 </div>
-                <div>
-                    <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-2">Assign Serial Number</label>
-                    <select v-if="availableSerials.length > 0" v-model="useForm.serialNumber" class="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl font-mono text-sm text-gray-900 outline-none focus:ring-2 focus:ring-[#0071e3] cursor-pointer">
-                        <option value="">-- Non-Serialized --</option>
-                        <option v-for="sn in availableSerials" :key="sn" :value="sn">{{ sn }}</option>
-                    </select>
-                    <div v-else class="p-3 bg-gray-50 border border-gray-200 rounded-xl"><p class="text-sm text-gray-500 italic">No serialized units available. Logging as non-serialized.</p></div>
-                </div>
-                <button type="submit" class="w-full bg-slate-900 hover:bg-black text-white p-4 rounded-xl font-bold shadow-md transition text-lg">Submit Log</button>
-            </form>
-            <div v-if="successMsg && activeTab === 'use'" class="mt-6 flex items-center gap-3 p-4 bg-green-50 text-green-800 rounded-xl border border-green-100 font-medium">{{ successMsg }}</div>
+            </div>
+            
+            <div v-if="successMsg && activeTab === 'use'" class="mt-8 flex items-center gap-3 p-4 bg-green-50 text-green-800 rounded-xl border border-green-100 font-medium">{{ successMsg }}</div>
         </div>
 
         <!-- Combined Reports -->
@@ -338,6 +349,7 @@
                     <div class="flex items-center gap-2 px-2"><label class="text-xs font-bold text-gray-500 uppercase">To</label><input v-model="reportEnd" type="date" class="p-1.5 bg-transparent border-none text-sm font-medium outline-none"></div>
                     <button @click="fetchDataForReports" class="bg-white border border-gray-200 px-4 py-2 rounded-xl text-sm hover:bg-gray-50 font-bold shadow-sm transition ml-2">Fetch</button>
                     <button @click="printPage" class="bg-slate-900 hover:bg-black text-white px-4 py-2 rounded-xl text-sm font-bold shadow-sm transition">Print</button>
+                    <button @click="exportReport" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-sm transition">Excel</button>
                 </div>
             </div>
 
@@ -399,7 +411,7 @@
         </div>
     </main>
 
-    <!-- Modal 1: Reserve Part -->
+    <!-- Modals -->
     <div v-if="showReserveModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/40 backdrop-blur-sm transition-opacity">
         <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden transform transition-all">
             <div class="p-6 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
@@ -429,7 +441,6 @@
         </div>
     </div>
 
-    <!-- Modal 2: View Reservations -->
     <div v-if="showViewModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/40 backdrop-blur-sm transition-opacity">
         <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden transform transition-all flex flex-col max-h-[80vh]">
             <div class="p-6 border-b border-gray-100 bg-gray-50 flex justify-between items-center shrink-0">
@@ -463,7 +474,7 @@ const { createApp } = Vue;
 createApp({
     data() {
         return {
-            showDetails: false, // Added to toggle detail columns
+            showDetails: false,
             activeTab: 'report', stock: [], availableSerials: [], successMsg: '', isSaving: false,
             searchQuery: '', modelFilter: '', receiveSearch: '', expectedItems: [], searched: false,
             useSearch: '', useSearchError: '', useForm: { repairId: '', partNumber: '', serialNumber: '', technician: '' },
@@ -483,12 +494,74 @@ createApp({
                 return matchesSearch && matchesModel;
             });
         },
-        filteredReceiving() { return this.historyList; },
-        filteredUsage() { return this.usageList; }
+        filteredReceiving() {
+            return this.historyList.filter(item => {
+                if (!this.reportStart && !this.reportEnd) return true;
+                const itemDate = new Date(item.received_at).setHours(0,0,0,0);
+                const start = this.reportStart ? new Date(this.reportStart).setHours(0,0,0,0) : -Infinity;
+                const end = this.reportEnd ? new Date(this.reportEnd).setHours(23,59,59,999) : Infinity;
+                return itemDate >= start && itemDate <= end;
+            });
+        },
+        filteredUsage() {
+            return this.usageList.filter(item => {
+                if (!this.reportStart && !this.reportEnd) return true;
+                const itemDate = new Date(item.used_at).setHours(0,0,0,0);
+                const start = this.reportStart ? new Date(this.reportStart).setHours(0,0,0,0) : -Infinity;
+                const end = this.reportEnd ? new Date(this.reportEnd).setHours(23,59,59,999) : Infinity;
+                return itemDate >= start && itemDate <= end;
+            });
+        }
     },
     mounted() { this.fetchStock(); this.fetchAWBs(); this.fetchDataForReports(); },
     methods: {
         printPage() { window.print(); },
+        
+        downloadExcel(data, filename) {
+            const worksheet = XLSX.utils.json_to_sheet(data);
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, "Report Data");
+            XLSX.writeFile(workbook, filename + ".xlsx");
+        },
+        exportStock() {
+            const cleanData = this.filteredStock.map(item => ({
+                "Part Number": item.part_number,
+                "Model": item.model,
+                "Description": item.description,
+                "Seed Qty": item.current_seed_qty,
+                "Refilled Qty": item.total_refilled_received,
+                "Used Qty": item.total_used,
+                "Physical In-Stock": item.remaining_stock,
+                "Reserved Qty": item.total_reserved,
+                "Available Qty": item.available_stock
+            }));
+            this.downloadExcel(cleanData, "AASP_Stock_Report");
+        },
+        exportReport() {
+            if (this.reportType === 'receiving') {
+                const cleanData = this.filteredReceiving.map(item => ({
+                    "Date Received": new Date(item.received_at).toLocaleDateString(),
+                    "AWB Number": item.awb_number,
+                    "PO Number": item.po_number || 'N/A',
+                    "Repair ID": item.repair_id || 'N/A',
+                    "Part Number": item.part_number,
+                    "Serial Number": item.serial_number || 'N/A',
+                    "Classification": item.classification || 'N/A'
+                }));
+                this.downloadExcel(cleanData, "Receiving_History");
+            } else {
+                const cleanData = this.filteredUsage.map(item => ({
+                    "Date Used": new Date(item.used_at).toLocaleDateString(),
+                    "Repair ID": item.repair_id,
+                    "Part Number": item.part_number,
+                    "Description": item.description,
+                    "Serial Number": item.serial_number || 'N/A',
+                    "Technician": item.technician
+                }));
+                this.downloadExcel(cleanData, "Usage_History");
+            }
+        },
+
         async fetchDataForReports() { await Promise.all([this.fetchHistory(), this.fetchUsage()]); },
         async fetchStock() { try { const res = await fetch('/api/stock'); this.stock = await res.json(); } catch(e) { this.stock = []; } },
         async fetchAWBs() { try { const res = await fetch('/api/awb-status'); this.awbList = await res.json(); } catch(e) { this.awbList = []; } },
@@ -622,6 +695,40 @@ createApp({
             this.successMsg = 'Usage recorded successfully!';
             this.resetUseForm(); this.fetchStock(); this.fetchDataForReports(); 
             setTimeout(() => this.successMsg = '', 3000);
+        },
+
+        uploadBulkUseExcel(event) {
+            const file = event.target.files[0]; if (!file) return;
+            const reader = new FileReader();
+            reader.onload = async (e) => {
+                const workbook = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+                const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                const data = XLSX.utils.sheet_to_json(firstSheet);
+                
+                const items = data.map(row => ({
+                    repairId: row['Repair ID'] || row['Repair_ID'] || row['Repair'] || 'UNKNOWN',
+                    partNumber: row['Part Number'] || row['Part_Number'] || row['PartNumber'] || row['Part'],
+                    serialNumber: row['Serial Number'] || row['Serial_Number'] || row['S/N'] || row['SN'] || null,
+                    technician: row['Technician ID'] || row['Technician_ID'] || row['Technician'] || 'TECH'
+                })).filter(item => item.partNumber);
+                
+                if(items.length === 0) return alert("No valid parts found in the Excel file. Please check your column headers.");
+                
+                try {
+                    const res = await fetch('/api/bulk-use', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ items }) });
+                    if (!res.ok) {
+                        const errData = await res.json();
+                        throw new Error(errData.error || "Unknown Database Error");
+                    }
+                    this.successMsg = `Successfully recorded ${items.length} parts from bulk upload!`;
+                    this.fetchStock(); this.fetchDataForReports();
+                } catch (err) {
+                    alert("Bulk Upload Error: " + err.message);
+                }
+                event.target.value = ''; 
+                setTimeout(() => this.successMsg = '', 5000);
+            };
+            reader.readAsArrayBuffer(file);
         }
     }
 }).mount('#app')
