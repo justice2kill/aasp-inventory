@@ -4,7 +4,6 @@ const path = require("path");
 const { Pool } = require("@neondatabase/serverless"); 
 
 const pool = new Pool({
-  // This line ensures it works securely on SnapDeploy AND locally in StackBlitz!
   connectionString: process.env.DATABASE_URL || "postgresql://neondb_owner:npg_XHzkG8nMJx2B@ep-plain-night-azr7vi9q-pooler.c-3.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require",
   ssl: { require: true }
 });
@@ -14,7 +13,6 @@ fastify.register(require("@fastify/static"), {
   prefix: "/",
 });
 
-// Fetches live stock balance, ignoring FOC and Legacy Seed from refilled counts
 fastify.get("/api/stock", async (request, reply) => {
   try {
     const query = `
@@ -70,7 +68,6 @@ fastify.post("/api/unreserve", async (request, reply) => {
   } catch (err) { return reply.code(500).send({ error: err.message }); }
 });
 
-// Uploads packing list, supporting PO Numbers and Repair IDs
 fastify.post("/api/upload-packing-list", async (request, reply) => {
   try {
     const items = request.body.items;
@@ -146,11 +143,12 @@ fastify.post("/api/use", async (request, reply) => {
   } catch (err) { return reply.code(500).send({ error: err.message }); }
 });
 
+// UPDATED: Now fetches po_number into the items array
 fastify.get("/api/awb-status", async (request, reply) => {
   try {
     const query = `
       SELECT awb_number, MAX(po_number) as po_number, COUNT(id) as total_parts, SUM(CASE WHEN status = 'RECEIVED' THEN 1 ELSE 0 END) as received_parts,
-             json_agg(json_build_object('part', part_number, 'sn', serial_number, 'status', status, 'repair_id', repair_id)) as items
+             json_agg(json_build_object('part', part_number, 'sn', serial_number, 'status', status, 'repair_id', repair_id, 'po_number', po_number)) as items
       FROM shipment_items GROUP BY awb_number ORDER BY MAX(created_at) DESC
     `;
     const result = await pool.query(query);

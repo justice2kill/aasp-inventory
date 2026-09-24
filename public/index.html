@@ -27,7 +27,6 @@
 <body class="text-gray-800 antialiased">
 
 <div id="app" class="min-h-screen flex flex-col relative">
-    <!-- Navigation -->
     <header class="no-print sticky top-0 z-40 glass-nav border-b border-gray-200">
         <div class="max-w-[90rem] mx-auto px-6 h-16 flex items-center justify-between">
             <div class="flex items-center space-x-2">
@@ -46,8 +45,7 @@
     </header>
 
     <main class="flex-grow max-w-[90rem] mx-auto w-full p-6 pt-8">
-        
-        <!-- MODULE 1: Stock Report -->
+        <!-- Stock Report -->
         <div v-show="activeTab === 'report'" class="bg-white rounded-2xl smooth-shadow border border-gray-100 p-8">
             <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4 no-print">
                 <div>
@@ -55,6 +53,10 @@
                     <p class="text-sm text-gray-500 mt-1">FOC consumables are tracked in history but excluded from quantities.</p>
                 </div>
                 <div class="flex items-center space-x-3 w-full md:w-auto">
+                    <label class="flex items-center gap-2 text-sm font-medium text-gray-600 bg-white border border-gray-200 px-3 py-2.5 rounded-xl cursor-pointer hover:bg-gray-50 shadow-sm transition">
+                        <input type="checkbox" v-model="showDetails" class="w-4 h-4 text-[#0071e3] rounded border-gray-300">
+                        Show Breakdown
+                    </label>
                     <select v-model="modelFilter" class="p-2.5 border border-gray-200 rounded-xl bg-gray-50 text-sm font-medium text-gray-700 w-full md:w-auto">
                         <option value="">All Models</option>
                         <option v-for="model in uniqueModels" :key="model" :value="model">{{ model }}</option>
@@ -70,9 +72,11 @@
                         <tr class="bg-gray-50/80 text-gray-500 text-xs uppercase tracking-wider border-b border-gray-100">
                             <th class="p-4 font-semibold">Part Number</th>
                             <th class="p-4 font-semibold">Model & Description</th>
-                            <th class="p-4 font-semibold text-center text-gray-400 border-l border-gray-200">Seed</th>
-                            <th class="p-4 font-semibold text-center text-gray-400">Refilled</th>
-                            <th class="p-4 font-semibold text-center text-gray-400 border-r border-gray-200">Used</th>
+                            <!-- HIDDEN/SHOWN COLUMNS -->
+                            <th v-if="showDetails" class="p-4 font-semibold text-center text-gray-400 border-l border-gray-200">Seed</th>
+                            <th v-if="showDetails" class="p-4 font-semibold text-center text-gray-400">Refilled</th>
+                            <th v-if="showDetails" class="p-4 font-semibold text-center text-gray-400 border-r border-gray-200">Used</th>
+                            <!-- END -->
                             <th class="p-4 font-semibold text-center bg-gray-100/50">Physical In-Stock</th>
                             <th class="p-4 font-semibold text-center text-amber-600">Reserved</th>
                             <th class="p-4 font-bold text-gray-900 text-center">Available</th>
@@ -92,9 +96,11 @@
                                     <div class="text-sm font-bold text-gray-900">{{ item.model }}</div>
                                     <div class="text-[11px] text-gray-500 mt-0.5 whitespace-normal w-48 leading-tight">{{ item.description }}</div>
                                 </td>
-                                <td class="p-4 text-center text-sm font-medium text-gray-500 border-l border-gray-100">{{ item.current_seed_qty }}</td>
-                                <td class="p-4 text-center text-sm font-medium text-blue-500">+{{ item.total_refilled_received }}</td>
-                                <td class="p-4 text-center text-sm font-medium text-red-400 border-r border-gray-100">-{{ item.total_used }}</td>
+                                <!-- HIDDEN/SHOWN DATA -->
+                                <td v-if="showDetails" class="p-4 text-center text-sm font-medium text-gray-500 border-l border-gray-100">{{ item.current_seed_qty }}</td>
+                                <td v-if="showDetails" class="p-4 text-center text-sm font-medium text-blue-500">+{{ item.total_refilled_received }}</td>
+                                <td v-if="showDetails" class="p-4 text-center text-sm font-medium text-red-400 border-r border-gray-100">-{{ item.total_used }}</td>
+                                <!-- END -->
                                 <td class="p-4 text-center text-sm font-bold text-gray-900 bg-gray-50/30">{{ item.remaining_stock }}</td>
                                 <td class="p-4 text-center">
                                     <button v-if="item.total_reserved > 0" @click="viewReservations(item.part_number)" class="inline-flex items-center justify-center px-3 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-700 hover:bg-amber-200 transition shadow-sm cursor-pointer">{{ item.total_reserved }} Waiting</button>
@@ -108,7 +114,7 @@
                                 </td>
                             </tr>
                             <tr v-if="expandedRow === item.part_number" class="bg-blue-50/10 border-b-2 border-blue-100 shadow-inner">
-                                <td colspan="9" class="p-6">
+                                <td :colspan="showDetails ? 9 : 6" class="p-6">
                                     <div class="max-w-4xl border border-blue-200 bg-white rounded-xl p-5 shadow-sm">
                                         <div class="flex justify-between items-center mb-4">
                                             <h4 class="text-sm font-bold text-gray-900 flex items-center gap-2">
@@ -139,13 +145,13 @@
                                 </td>
                             </tr>
                         </template>
-                        <tr v-if="filteredStock.length === 0"><td colspan="9" class="p-12 text-center text-gray-400 font-medium">No parts found matching your criteria.</td></tr>
+                        <tr v-if="filteredStock.length === 0"><td :colspan="showDetails ? 9 : 6" class="p-12 text-center text-gray-400 font-medium">No parts found matching your criteria.</td></tr>
                     </tbody>
                 </table>
             </div>
         </div>
 
-        <!-- MODULE 2: Import Shipments -->
+        <!-- Import Shipments -->
         <div v-show="activeTab === 'upload'" class="bg-white rounded-2xl smooth-shadow border border-gray-100 p-8 max-w-4xl mx-auto no-print">
             <h2 class="text-2xl font-bold tracking-tight text-gray-900 mb-2">Upload Packing List</h2>
             <p class="text-sm text-gray-500 mb-8">Upload an Excel file (.xls) or paste raw text from Apple PDFs to auto-extract AWB, POs, G-codes, and part data.</p>
@@ -167,7 +173,6 @@
                 </div>
             </div>
 
-            <!-- Preview Data Check -->
             <div v-if="parsedItems.length > 0" class="border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
                 <div class="bg-blue-50/50 p-4 border-b border-gray-200 flex justify-between items-center">
                     <div class="flex items-center gap-4">
@@ -201,7 +206,7 @@
             <div v-if="successMsg && activeTab === 'upload'" class="mt-6 flex items-center gap-3 p-4 bg-green-50 text-green-800 rounded-xl border border-green-100 font-medium">{{ successMsg }}</div>
         </div>
 
-        <!-- MODULE 3: AWB Tracker -->
+        <!-- AWB Tracker -->
         <div v-show="activeTab === 'awb'" class="bg-white rounded-2xl smooth-shadow border border-gray-100 p-8 no-print">
             <div class="flex justify-between items-center mb-8">
                 <h2 class="text-2xl font-bold tracking-tight text-gray-900">Shipment Tracker</h2>
@@ -226,7 +231,10 @@
                         <div v-for="(item, idx) in awb.items" :key="'item-'+idx" class="flex justify-between items-center py-2 border-b border-gray-50 last:border-0 text-sm">
                             <span class="font-mono font-medium text-gray-800 flex items-center gap-1.5 flex-wrap">
                                 {{ item.part }} 
-                                <span v-if="item.repair_id" class="text-[10px] font-bold bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded border border-amber-200">{{ item.repair_id }}</span>
+                                <!-- UPDATED: Shows Repair ID, or PO Number if no Repair ID is available -->
+                                <span v-if="item.repair_id || item.po_number" class="text-[10px] font-bold bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded border border-amber-200">
+                                    {{ item.repair_id || item.po_number }}
+                                </span>
                                 <span v-if="item.sn" class="text-gray-400 text-xs">({{ item.sn }})</span>
                             </span>
                             <span class="font-semibold text-xs shrink-0" :class="item.status === 'RECEIVED' ? 'text-green-600' : 'text-amber-500'">{{ item.status === 'RECEIVED' ? '✓ Received' : 'Pending' }}</span>
@@ -236,7 +244,7 @@
             </div>
         </div>
 
-        <!-- MODULE 4: Receive Parts -->
+        <!-- Receive Parts -->
         <div v-show="activeTab === 'receive'" class="bg-white rounded-2xl smooth-shadow border border-gray-100 p-8 max-w-4xl mx-auto no-print">
             <h2 class="text-2xl font-bold tracking-tight text-gray-900 mb-2">Receive Parts</h2>
             <div class="flex space-x-3 mb-8 mt-6">
@@ -248,8 +256,9 @@
                 <div v-for="item in expectedItems" :key="item.id" class="p-6 border border-[#0071e3]/20 rounded-2xl bg-blue-50/20 flex flex-col md:flex-row gap-6 items-start md:items-center justify-between shadow-sm">
                     <div class="flex-1 w-full">
                         <div class="flex items-center gap-2 mb-2">
-                            <span class="bg-blue-100 text-blue-800 text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wide">AWB: {{ item.awb_number }}</span>
-                            <span v-if="item.repair_id" class="bg-amber-100 text-amber-800 text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wide">Repair: {{ item.repair_id }}</span>
+                            <!-- UPDATED: Made AWB tag much larger and bolder -->
+                            <span class="bg-blue-100 text-blue-800 text-sm font-extrabold px-3 py-1 rounded-md uppercase tracking-wide shadow-sm border border-blue-200">AWB: {{ item.awb_number }}</span>
+                            <span v-if="item.repair_id" class="bg-amber-100 text-amber-800 text-xs font-bold px-2 py-1 rounded-md uppercase tracking-wide border border-amber-200">Repair: {{ item.repair_id }}</span>
                         </div>
                         <p class="font-mono font-extrabold text-2xl text-gray-900 mb-4 mt-2">{{ item.part_number }}</p>
                         <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Serial Number</label>
@@ -270,7 +279,7 @@
             <div v-if="successMsg && activeTab === 'receive'" class="mt-6 flex items-center gap-3 p-4 bg-green-50 text-green-800 rounded-xl border border-green-100 font-medium">{{ successMsg }}</div>
         </div>
 
-        <!-- MODULE 5: Use Parts -->
+        <!-- Use Parts -->
         <div v-show="activeTab === 'use'" class="bg-white rounded-2xl smooth-shadow border border-gray-100 p-8 max-w-2xl mx-auto no-print">
             <h2 class="text-2xl font-bold tracking-tight text-gray-900 mb-6">Record Part Usage</h2>
             
@@ -313,7 +322,7 @@
             <div v-if="successMsg && activeTab === 'use'" class="mt-6 flex items-center gap-3 p-4 bg-green-50 text-green-800 rounded-xl border border-green-100 font-medium">{{ successMsg }}</div>
         </div>
 
-        <!-- MODULE 6: Combined Reports -->
+        <!-- Combined Reports -->
         <div v-show="activeTab === 'reports'" class="bg-white rounded-2xl smooth-shadow border border-gray-100 p-8">
             <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-8 gap-6 no-print border-b border-gray-100 pb-6">
                 <div class="flex items-center space-x-4">
@@ -454,6 +463,7 @@ const { createApp } = Vue;
 createApp({
     data() {
         return {
+            showDetails: false, // Added to toggle detail columns
             activeTab: 'report', stock: [], availableSerials: [], successMsg: '', isSaving: false,
             searchQuery: '', modelFilter: '', receiveSearch: '', expectedItems: [], searched: false,
             useSearch: '', useSearchError: '', useForm: { repairId: '', partNumber: '', serialNumber: '', technician: '' },

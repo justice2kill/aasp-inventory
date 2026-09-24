@@ -5,9 +5,10 @@
     "start": "node index.js"
   },
   "dependencies": {
+    "@fastify/static": "^6.12.0",
+    "@neondatabase/serverless": "^0.9.4",
     "dotenv": "^16.4.5",
     "fastify": "^4.26.2",
-    "@fastify/static": "^6.12.0",
-    "@neondatabase/serverless": "^0.9.4"
+    "xlsx": "^0.18.5"
   }
 }
