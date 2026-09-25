@@ -85,16 +85,23 @@
                     </thead>
                     <tbody class="divide-y divide-gray-100">
                         <template v-for="item in filteredStock" :key="item.part_number">
-                            <tr class="hover:bg-gray-50/50 transition">
-                                <td class="p-4 cursor-pointer group" @click="toggleExpand(item)">
-                                    <div class="flex items-center gap-2">
-                                        <svg class="w-4 h-4 text-gray-400 group-hover:text-[#0071e3] transition-transform" :class="{'rotate-90': expandedRow === item.part_number}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
-                                        <span class="font-mono text-sm font-bold text-[#0071e3] group-hover:underline">{{ item.part_number }}</span>
+                            <tr class="hover:bg-gray-50/50 transition group/row">
+                                <td class="p-4 cursor-pointer" @click="toggleExpand(item)">
+                                    <div class="flex items-center gap-2 group-hover/row:text-[#0071e3]">
+                                        <svg class="w-4 h-4 text-gray-400 transition-transform" :class="{'rotate-90': expandedRow === item.part_number}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                                        <span class="font-mono text-sm font-bold text-[#0071e3] group-hover/row:underline">{{ item.part_number }}</span>
                                     </div>
                                 </td>
-                                <td class="p-4">
-                                    <div class="text-sm font-bold text-gray-900">{{ item.model }}</div>
-                                    <div class="text-[11px] text-gray-500 mt-0.5 whitespace-normal w-48 leading-tight">{{ item.description }}</div>
+                                <td class="p-4 group/edit">
+                                    <div class="flex items-start justify-between gap-2">
+                                        <div>
+                                            <div class="text-sm font-bold text-gray-900">{{ item.model }}</div>
+                                            <div class="text-[11px] text-gray-500 mt-0.5 whitespace-normal w-48 leading-tight">{{ item.description }}</div>
+                                        </div>
+                                        <button @click.stop="openEditModal(item)" class="opacity-0 group-hover/edit:opacity-100 text-gray-400 hover:text-[#0071e3] transition p-1 no-print rounded hover:bg-blue-50" title="Edit Part Details">
+                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                                        </button>
+                                    </div>
                                 </td>
                                 <td v-if="showDetails" class="p-4 text-center text-sm font-medium text-gray-500 border-l border-gray-100">{{ item.current_seed_qty }}</td>
                                 <td v-if="showDetails" class="p-4 text-center text-sm font-medium text-blue-500">+{{ item.total_refilled_received }}</td>
@@ -506,6 +513,36 @@
             </div>
         </div>
     </div>
+
+    <!-- Modal 4: Edit Part -->
+    <div v-if="showEditModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/40 backdrop-blur-sm transition-opacity">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden transform transition-all">
+            <div class="p-6 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
+                <h3 class="text-lg font-bold text-gray-900">Edit Part Details</h3>
+                <button @click="showEditModal = false" class="text-gray-400 hover:text-gray-600 transition">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+            </div>
+            <div class="p-6 space-y-4">
+                <div>
+                    <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Part Number</label>
+                    <p class="font-mono font-extrabold text-xl text-slate-900">{{ editForm.partNumber }}</p>
+                </div>
+                <div>
+                    <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Model</label>
+                    <input v-model="editForm.model" type="text" placeholder="e.g. iPhone 13 Pro" class="w-full p-3 bg-white border border-gray-200 rounded-xl text-sm font-semibold outline-none focus:ring-2 focus:ring-[#0071e3] shadow-sm">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Description</label>
+                    <textarea v-model="editForm.description" rows="2" placeholder="e.g. Display Assembly" class="w-full p-3 bg-white border border-gray-200 rounded-xl text-sm font-semibold text-gray-700 outline-none focus:ring-2 focus:ring-[#0071e3] shadow-sm resize-none"></textarea>
+                </div>
+            </div>
+            <div class="p-6 border-t border-gray-100 bg-gray-50 flex justify-end gap-3">
+                <button @click="showEditModal = false" class="px-5 py-2.5 rounded-xl text-sm font-bold text-gray-600 hover:bg-gray-200 transition">Cancel</button>
+                <button @click="submitEditPart" :disabled="!editForm.model || !editForm.description" class="px-5 py-2.5 rounded-xl text-sm font-bold text-white bg-[#0071e3] hover:bg-[#005bb5] disabled:opacity-50 transition shadow-sm">Save Changes</button>
+            </div>
+        </div>
+    </div>
 </div>
 
 <script>
@@ -522,6 +559,9 @@ createApp({
             showReserveModal: false, showViewModal: false, viewModalPart: '',
             activeReservations: [], reserveForm: { partNumber: '', customerName: '', deviceSn: '' },
             showManualModal: false, manualForm: { partNumber: '', serialNumber: '', classification: 'CUSTOMER_SPECIFIC', remark: '' },
+            
+            showEditModal: false, editForm: { partNumber: '', model: '', description: '' },
+            
             expandedRow: null, expandedSerials: [], newSerialsInput: {} 
         }
     },
@@ -659,6 +699,32 @@ createApp({
                 alert("Error adding part: " + err.message);
             }
         },
+
+        openEditModal(item) {
+            // Only auto-fill if it's NOT the placeholder text, otherwise leave blank to prompt user
+            this.editForm = { 
+                partNumber: item.part_number, 
+                model: item.model === 'Unknown' ? '' : item.model, 
+                description: item.description === 'Manually Added Part' || item.description === 'Auto-added from Bulk Usage' || item.description === 'Auto-added from Packing List' ? '' : item.description 
+            };
+            this.showEditModal = true;
+        },
+        async submitEditPart() {
+            try {
+                const res = await fetch('/api/update-part', { 
+                    method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(this.editForm) 
+                });
+                if (!res.ok) throw new Error("Database Error");
+                
+                this.successMsg = 'Part details updated successfully!';
+                this.showEditModal = false;
+                this.fetchStock();
+                setTimeout(() => this.successMsg = '', 3000);
+            } catch (err) {
+                alert("Error updating part: " + err.message);
+            }
+        },
+
         async findPartToUse() {
             this.useSearchError = ''; const q = this.useSearch.trim(); if(!q) return;
             const stockItem = this.stock.find(s => s.part_number.toLowerCase() === q.toLowerCase());

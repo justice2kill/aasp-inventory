@@ -216,7 +216,15 @@ fastify.post("/api/manual-add", async (request, reply) => {
     return { success: true };
   } catch (err) { return reply.code(500).send({ error: err.message }); }
 });
-
+// NEW: Edit Part Details Endpoint
+fastify.post("/api/update-part", async (request, reply) => {
+  try {
+    const { partNumber, model, description } = request.body;
+    const query = `UPDATE parts SET model = $1, description = $2 WHERE part_number = $3`;
+    await pool.query(query, [model, description, partNumber]);
+    return { success: true };
+  } catch (err) { return reply.code(500).send({ error: err.message }); }
+});
 fastify.listen({ port: 3000, host: "0.0.0.0" }, function (err, address) {
   if (err) { console.error(err); process.exit(1); }
   console.log(`Your app is listening on ${address}`);
