@@ -247,6 +247,7 @@
             <div class="flex space-x-3 mb-8 mt-6">
                 <input v-model="receiveSearch" @keyup.enter="searchExpected" type="text" placeholder="Scan Barcode (S/N or Part Number)..." class="flex-1 p-4 bg-gray-50 border border-gray-200 rounded-xl font-mono text-lg outline-none focus:ring-2 focus:ring-[#0071e3]">
                 <button @click="searchExpected" class="bg-slate-900 hover:bg-black text-white px-8 py-4 rounded-xl font-bold shadow-sm transition">Search</button>
+                <button @click="showManualModal = true" class="bg-blue-100 hover:bg-blue-200 text-blue-800 px-6 py-4 rounded-xl font-bold shadow-sm transition whitespace-nowrap">Manual Add</button>
             </div>
 
             <div v-if="expectedItems.length > 0" class="space-y-4">
@@ -275,7 +276,7 @@
             <div v-if="successMsg && activeTab === 'receive'" class="mt-6 flex items-center gap-3 p-4 bg-green-50 text-green-800 rounded-xl border border-green-100 font-medium">{{ successMsg }}</div>
         </div>
 
-        <!-- NEW: Use Parts with Bulk Upload Layout -->
+        <!-- Use Parts -->
         <div v-show="activeTab === 'use'" class="bg-white rounded-2xl smooth-shadow border border-gray-100 p-8 max-w-5xl mx-auto no-print">
             <h2 class="text-2xl font-bold tracking-tight text-gray-900 mb-8">Record Part Usage</h2>
             
@@ -467,6 +468,44 @@
             </div>
         </div>
     </div>
+    
+    <div v-if="showManualModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/40 backdrop-blur-sm transition-opacity">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden transform transition-all">
+            <div class="p-6 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
+                <h3 class="text-lg font-bold text-gray-900">Manually Add Stock</h3>
+                <button @click="showManualModal = false" class="text-gray-400 hover:text-gray-600 transition">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+            </div>
+            <div class="p-6 space-y-4">
+                <div>
+                    <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Part Number *</label>
+                    <input v-model="manualForm.partNumber" type="text" placeholder="e.g. 661-12345" class="w-full p-3 bg-white border border-gray-200 rounded-xl text-sm font-mono font-bold outline-none focus:ring-2 focus:ring-[#0071e3] shadow-sm">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Serial Number (Optional)</label>
+                    <input v-model="manualForm.serialNumber" type="text" placeholder="Leave blank if non-serialized" class="w-full p-3 bg-white border border-gray-200 rounded-xl text-sm font-mono font-semibold outline-none focus:ring-2 focus:ring-[#0071e3] shadow-sm">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Classification</label>
+                    <select v-model="manualForm.classification" class="w-full p-3 bg-white border border-gray-200 rounded-xl text-sm font-semibold text-gray-700 outline-none focus:ring-2 focus:ring-[#0071e3] shadow-sm">
+                        <option value="CUSTOMER_SPECIFIC">Customer Specific</option>
+                        <option value="REFILLED">Found/Refilled Stock</option>
+                        <option value="NEW_SEED">New Seed Stock</option>
+                        <option value="FOC">FOC (Consumable)</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Remark / Reason</label>
+                    <textarea v-model="manualForm.remark" rows="2" placeholder="e.g. Converted customer part..." class="w-full p-3 bg-white border border-gray-200 rounded-xl text-sm font-semibold text-gray-700 outline-none focus:ring-2 focus:ring-[#0071e3] shadow-sm resize-none"></textarea>
+                </div>
+            </div>
+            <div class="p-6 border-t border-gray-100 bg-gray-50 flex justify-end gap-3">
+                <button @click="showManualModal = false" class="px-5 py-2.5 rounded-xl text-sm font-bold text-gray-600 hover:bg-gray-200 transition">Cancel</button>
+                <button @click="submitManualAdd" :disabled="!manualForm.partNumber" class="px-5 py-2.5 rounded-xl text-sm font-bold text-white bg-[#0071e3] hover:bg-[#005bb5] disabled:opacity-50 transition shadow-sm">Add to Inventory</button>
+            </div>
+        </div>
+    </div>
 </div>
 
 <script>
@@ -482,6 +521,7 @@ createApp({
             reportStart: '', reportEnd: '', historyList: [], usageList: [],
             showReserveModal: false, showViewModal: false, viewModalPart: '',
             activeReservations: [], reserveForm: { partNumber: '', customerName: '', deviceSn: '' },
+            showManualModal: false, manualForm: { partNumber: '', serialNumber: '', classification: 'CUSTOMER_SPECIFIC', remark: '' },
             expandedRow: null, expandedSerials: [], newSerialsInput: {} 
         }
     },
@@ -516,7 +556,6 @@ createApp({
     mounted() { this.fetchStock(); this.fetchAWBs(); this.fetchDataForReports(); },
     methods: {
         printPage() { window.print(); },
-        
         downloadExcel(data, filename) {
             const worksheet = XLSX.utils.json_to_sheet(data);
             const workbook = XLSX.utils.book_new();
@@ -542,7 +581,7 @@ createApp({
                 const cleanData = this.filteredReceiving.map(item => ({
                     "Date Received": new Date(item.received_at).toLocaleDateString(),
                     "AWB Number": item.awb_number,
-                    "PO Number": item.po_number || 'N/A',
+                    "PO/Remark": item.po_number || 'N/A',
                     "Repair ID": item.repair_id || 'N/A',
                     "Part Number": item.part_number,
                     "Serial Number": item.serial_number || 'N/A',
@@ -561,7 +600,6 @@ createApp({
                 this.downloadExcel(cleanData, "Usage_History");
             }
         },
-
         async fetchDataForReports() { await Promise.all([this.fetchHistory(), this.fetchUsage()]); },
         async fetchStock() { try { const res = await fetch('/api/stock'); this.stock = await res.json(); } catch(e) { this.stock = []; } },
         async fetchAWBs() { try { const res = await fetch('/api/awb-status'); this.awbList = await res.json(); } catch(e) { this.awbList = []; } },
@@ -581,7 +619,6 @@ createApp({
             this.newSerialsInput[index] = ''; 
             const res = await fetch(`/api/serials/${encodeURIComponent(partNumber)}`); this.expandedSerials = await res.json(); this.fetchStock(); 
         },
-
         openReserveModal(partNumber) {
             this.reserveForm = { partNumber: partNumber, customerName: '', deviceSn: '' };
             this.showReserveModal = true;
@@ -604,7 +641,24 @@ createApp({
             if(this.activeReservations.length === 0) this.showViewModal = false;
             this.fetchStock();
         },
-
+        async submitManualAdd() {
+            try {
+                const res = await fetch('/api/manual-add', { 
+                    method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(this.manualForm) 
+                });
+                if (!res.ok) {
+                    const errData = await res.json();
+                    throw new Error(errData.error || "Unknown Database Error");
+                }
+                this.successMsg = 'Part manually added to inventory!';
+                this.showManualModal = false;
+                this.manualForm = { partNumber: '', serialNumber: '', classification: 'CUSTOMER_SPECIFIC', remark: '' };
+                this.fetchStock(); this.fetchDataForReports();
+                setTimeout(() => this.successMsg = '', 3000);
+            } catch (err) {
+                alert("Error adding part: " + err.message);
+            }
+        },
         async findPartToUse() {
             this.useSearchError = ''; const q = this.useSearch.trim(); if(!q) return;
             const stockItem = this.stock.find(s => s.part_number.toLowerCase() === q.toLowerCase());
@@ -624,7 +678,6 @@ createApp({
             this.useForm = { repairId: '', partNumber: '', serialNumber: '', technician: '' };
             this.useSearch = ''; this.useSearchError = ''; this.availableSerials = [];
         },
-        
         uploadAppleExcel(event) {
             const file = event.target.files[0]; if (!file) return;
             const reader = new FileReader();
@@ -635,26 +688,20 @@ createApp({
             };
             reader.readAsArrayBuffer(file);
         },
-        
         parseAppleText() {
             this.parsedItems = []; this.parsedAwb = ''; 
             const text = this.rawPDFText; if (!text) return;
-            
             const awbMatch = text.match(/HAWB[^\d]*(\d+)/i) || text.match(/AWB[^\d]*(\d+)/i) || text.match(/Tracking[^\d]*(\d+)/i); 
             if (awbMatch) this.parsedAwb = awbMatch[1];
-            
             let globalPo = null;
             const poMatch = text.match(/(Gnext-SSO[^\s,]+|SSO[^\s,]+|FOC[^\s,]+)/i);
             if (poMatch) globalPo = poMatch[1];
-
             const matches = [...text.matchAll(/([A-Z0-9]*661-\d{4,5})/g)];
             matches.forEach((match, index) => {
                 const blockText = text.substring(match.index + match[1].length, matches[index + 1] ? matches[index + 1].index : text.length);
                 const snMatch = blockText.match(/S\/N[,\s:]+([A-Z0-9]{8,15})/i);
-                
                 let repairMatch = blockText.match(/(G\d{8,10})/i);
                 if (!repairMatch) repairMatch = text.match(/(G\d{8,10})/i);
-                
                 this.parsedItems.push({ 
                     awb: this.parsedAwb || 'UNKNOWN_AWB', 
                     poNumber: globalPo,
@@ -665,7 +712,6 @@ createApp({
                 });
             });
         },
-
         async submitParsedList() {
             if(this.parsedItems.length > 0) {
                 this.isSaving = true;
@@ -696,7 +742,6 @@ createApp({
             this.resetUseForm(); this.fetchStock(); this.fetchDataForReports(); 
             setTimeout(() => this.successMsg = '', 3000);
         },
-
         uploadBulkUseExcel(event) {
             const file = event.target.files[0]; if (!file) return;
             const reader = new FileReader();
@@ -704,7 +749,6 @@ createApp({
                 const workbook = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
                 const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
                 const data = XLSX.utils.sheet_to_json(firstSheet);
-                
                 const items = data.map(row => ({
                     repairId: row['Repair ID'] || row['Repair_ID'] || row['Repair'] || 'UNKNOWN',
                     partNumber: row['Part Number'] || row['Part_Number'] || row['PartNumber'] || row['Part'],

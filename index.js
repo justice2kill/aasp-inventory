@@ -143,19 +143,15 @@ fastify.post("/api/use", async (request, reply) => {
   } catch (err) { return reply.code(500).send({ error: err.message }); }
 });
 
-// NEW: Bulk Usage Endpoint
 fastify.post("/api/bulk-use", async (request, reply) => {
   try {
     const items = request.body.items;
     let addedCount = 0;
     for (let item of items) {
-      if (!item.partNumber) continue; // Skip blank rows
-      
-      // Force part to exist first so database doesn't reject it
+      if (!item.partNumber) continue; 
       const partQuery = `INSERT INTO parts (part_number, product, model, description, base_seed_qty) VALUES ($1, 'Unknown', 'Unknown', 'Auto-added from Bulk Usage', 0) ON CONFLICT (part_number) DO NOTHING`;
       await pool.query(partQuery, [item.partNumber.toString().trim()]);
       
-      // Insert the usage log
       const query = `INSERT INTO usage_logs (repair_id, device_serial, part_number, serial_number, technician) VALUES ($1, 'UNKNOWN', $2, $3, $4)`;
       await pool.query(query, [
         item.repairId ? item.repairId.toString().trim() : 'UNKNOWN_REPAIR', 
@@ -202,6 +198,22 @@ fastify.get("/api/usage-history", async (request, reply) => {
     `;
     const result = await pool.query(query);
     return result.rows;
+  } catch (err) { return reply.code(500).send({ error: err.message }); }
+});
+
+// NEW: Manual Add Endpoint with Remark handling
+fastify.post("/api/manual-add", async (request, reply) => {
+  try {
+    const { partNumber, serialNumber, classification, remark } = request.body;
+    if (!partNumber) throw new Error("Part Number is required");
+
+    const partQuery = `INSERT INTO parts (part_number, product, model, description, base_seed_qty) VALUES ($1, 'Unknown', 'Unknown', 'Manually Added Part', 0) ON CONFLICT (part_number) DO NOTHING`;
+    await pool.query(partQuery, [partNumber.trim()]);
+
+    const query = `INSERT INTO shipment_items (awb_number, part_number, serial_number, qty, status, classification, po_number, received_at) VALUES ('MANUAL-ADJ', $1, $2, 1, 'RECEIVED', $3, $4, NOW())`;
+    await pool.query(query, [partNumber.trim(), serialNumber ? serialNumber.trim() : null, classification, remark ? remark.trim() : null]);
+    
+    return { success: true };
   } catch (err) { return reply.code(500).send({ error: err.message }); }
 });
 
