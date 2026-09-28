@@ -229,8 +229,14 @@
                         <span v-if="awb.received_parts === awb.total_parts" class="bg-green-100 text-green-700 text-xs font-bold px-3 py-1 rounded-full shrink-0">Completed</span>
                         <span v-else class="bg-blue-100 text-blue-700 text-xs font-bold px-3 py-1 rounded-full shrink-0">In Transit</span>
                     </div>
+                    <div class="flex justify-between items-end mb-2 mt-2">
+                        <span class="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Arrival Status</span>
+                        <span class="text-sm font-extrabold" :class="awb.received_parts === awb.total_parts ? 'text-green-600' : 'text-[#0071e3]'">
+                            {{ awb.received_parts }} / {{ awb.total_parts }} Arrived
+                        </span>
+                    </div>
                     <div class="w-full bg-gray-100 rounded-full h-2 mb-5 overflow-hidden">
-                        <div class="bg-[#0071e3] h-full transition-all duration-500 ease-out" :style="{ width: Math.round((awb.received_parts / awb.total_parts) * 100) + '%' }"></div>
+                        <div :class="awb.received_parts === awb.total_parts ? 'bg-green-500' : 'bg-[#0071e3]'" class="h-full transition-all duration-500 ease-out" :style="{ width: Math.round((awb.received_parts / awb.total_parts) * 100) + '%' }"></div>
                     </div>
                     <div class="border-t border-gray-100 pt-4 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
                         <div v-for="(item, idx) in awb.items" :key="'item-'+idx" class="flex justify-between items-center py-2 border-b border-gray-50 last:border-0 text-sm">
