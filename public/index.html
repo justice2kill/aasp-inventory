@@ -604,7 +604,26 @@ createApp({
             });
         }
     },
-    mounted() { this.fetchStock(); this.fetchAWBs(); this.fetchDataForReports(); },
+    watch: {
+        activeTab(newTab) {
+            // Lazy load the heavy data only when the Reports tab is opened
+            if (newTab === 'reports') {
+                this.fetchDataForReports();
+            } 
+            // Keep the main lists fresh if they click back
+            else if (newTab === 'report') {
+                this.fetchStock();
+            } 
+            else if (newTab === 'awb') {
+                this.fetchAWBs();
+            }
+        }
+    },
+    mounted() { 
+        // Only load the lightweight data on startup!
+        this.fetchStock(); 
+        this.fetchAWBs(); 
+    },
     methods: {
         printPage() { window.print(); },
         downloadExcel(data, filename) {
