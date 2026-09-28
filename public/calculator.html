@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GNext Price Calculators & Part Lookup</title>
+<!-- Libraries for CSV Parsing and Local Database Storage -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/localforage/1.10.0/localforage.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: #f2f2f7; color: #1c1c1e; line-height: 1.5; padding-bottom: 40px;
+  }
+
+  /* --- Container & Tab Navigation --- */
+  .app-container { max-width: 1140px; margin: 30px auto 0; padding: 0 20px; }
+  
+  .tab-nav { display: flex; gap: 10px; margin-bottom: 20px; }
+  .tab-btn {
+    background: #e5e5ea; border: none; padding: 12px 24px; border-radius: 12px;
+    font-size: 14px; font-weight: 600; cursor: pointer; color: #636366; transition: all 0.2s ease;
+  }
+  .tab-btn:hover { background: #d1d1d6; color: #1c1c1e; }
+  .tab-btn.active { background: #007aff; color: #ffffff; box-shadow: 0 4px 12px rgba(0, 122, 255, 0.25); }
+  .tab-pane { display: none; }
+  .tab-pane.active { display: block; }
+
+  /* --- Grid Dashboard --- */
+  .dashboard-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; } 
+  .dashboard-grid.single { grid-template-columns: 1fr; max-width: 720px; margin: 0 auto; }
+
+  /* --- Cards --- */
+  .card {
+    background: #ffffff; border-radius: 16px; padding: 24px;
+    border: 1px solid #e5e5ea; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03);
+    display: flex; flex-direction: column;
+  }
+  
+  .card-header { margin-bottom: 20px; border-bottom: 1px solid #f2f2f7; padding-bottom: 12px; }
+  .card-header h2 { font-size: 18px; font-weight: 700; color: #1c1c1e; display: flex; align-items: center; gap: 8px; }
+  .card-header .subtitle { font-size: 13px; color: #8e8e93; font-weight: 400; margin-top: 2px; }
+
+  /* --- Form Inputs & Grids --- */
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .full-width { grid-column: 1 / -1; }
+  .form-group { margin-bottom: 12px; }
+  label { display: block; font-size: 12px; font-weight: 600; color: #48484a; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.3px; }
+  
+  input[type="number"], select {
+    width: 100%; padding: 10px 12px; border: 1px solid #d1d1d6;
+    border-radius: 10px; font-size: 14px; background: #ffffff; color: #1c1c1e;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  input:focus, select:focus { outline: none; border-color: #007aff; box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.15); }
+  select:disabled { background-color: #f2f2f7; cursor: not-allowed; color: #8e8e93; }
+
+  /* --- Section Divider --- */
+  .section-divider { border: 0; height: 1px; background: #e5e5ea; margin: 16px 0; }
+
+  /* --- Database Status & Loaders --- */
+  .db-status-box {
+    background: #eef6ff; border: 1px solid #c7e0ff; padding: 12px 16px;
+    border-radius: 10px; margin-bottom: 16px; display: flex; flex-direction: column; gap: 10px;
+    font-size: 13px; font-weight: 600; color: #0056b3;
+  }
+  .db-status-row { display: flex; justify-content: space-between; align-items: center; }
+  
+  .btn-reset {
+    background: #ff3b30; color: white; border: none; padding: 6px 12px;
+    border-radius: 6px; cursor: pointer; font-size: 11px; font-weight: 600; transition: 0.2s;
+  }
+  .btn-reset:hover { background: #d70015; }
+
+  #loading-container {
+    background: #fafafa; border: 2px dashed #d1d1d6; padding: 20px;
+    border-radius: 10px; text-align: center; margin-bottom: 16px;
+  }
+  .loader-text { color: #007aff; font-weight: 700; font-size: 14px; }
+  .loader-subtext { color: #8e8e93; font-size: 12px; margin-top: 4px; font-weight: 400; }
+
+  /* --- Metrics Box --- */
+  .metrics-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 16px; }
+  .metric-badge { background: #f2f2f7; border-radius: 10px; padding: 12px 8px; text-align: center; }
+  .metric-badge small { display: block; color: #8e8e93; font-size: 10px; font-weight: 700; text-transform: uppercase; }
+  .metric-badge strong { font-size: 13px; color: #1c1c1e; margin-top: 4px; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* Special Stock Badge Styling */
+  .stock-badge { background: #f8f9fa; border: 1px solid #e5e5ea; }
+  .stock-badge small { color: #48484a; }
+
+  /* --- Re-styled Results Output --- */
+  .result-card { background: #1c1c1e; color: #ffffff; border-radius: 14px; padding: 24px; margin-top: 10px; }
+  .result-card .label { color: #8e8e93; font-size: 13px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; }
+  .result-card .price-mmk { font-size: 38px; font-weight: 800; color: #30d158; letter-spacing: -0.5px; margin: 8px 0; }
+  .result-card .price-usd { color: #f2f2f7; font-size: 20px; font-weight: 600; margin-bottom: 24px; }
+  
+  .breakdown-table { margin-top: 20px; border-top: 1px solid #38383a; padding-top: 16px; font-size: 14px; }
+  .breakdown-row { display: flex; justify-content: space-between; padding: 8px 0; color: #aeaeb2; }
+  .breakdown-row.highlight { color: #ffffff; font-weight: 600; }
+
+  /* --- Collapsible Management Panel --- */
+  .collapsible-card { margin-top: 20px; background: #ffffff; border-radius: 16px; border: 1px solid #e5e5ea; overflow: hidden; }
+  .collapsible-header {
+    padding: 16px 24px; background: #ffffff; cursor: pointer; display: flex; justify-content: space-between; align-items: center;
+    font-weight: 700; font-size: 15px; color: #1c1c1e; user-select: none;
+  }
+  .collapsible-header:hover { background: #fafafa; }
+  .collapsible-body { padding: 20px 24px; border-top: 1px solid #f2f2f7; display: none; }
+  .collapsible-body.open { display: block; }
+
+  .formula-box { background: #f0f4ff; border: 1px solid #d0e0ff; padding: 12px 16px; border-radius: 10px; font-size: 13px; color: #1c1c1e; margin-bottom: 16px; line-height: 1.5; }
+  .formula-box strong { color: #007aff; }
+
+  table { width: 100%; border-collapse: collapse; text-align: left; font-size: 13px; }
+  th, td { padding: 8px 10px; border-bottom: 1px solid #f2f2f7; }
+  th { font-weight: 600; color: #8e8e93; text-transform: uppercase; font-size: 11px; }
+  td input { padding: 4px 8px; font-size: 13px; border-radius: 6px; width: 90px; }
+
+  /* --- Checkbox & Radio Options --- */
+  .check-group { display: flex; flex-direction: column; gap: 10px; margin: 16px 0; background: #f2f2f7; padding: 16px; border-radius: 12px; }
+  .check-item { display: flex; align-items: center; gap: 10px; font-size: 14px; font-weight: 500; cursor: pointer; }
+  .check-item input { width: 16px; height: 16px; cursor: pointer; }
+  .sub-options { margin-left: 26px; padding-left: 12px; border-left: 2px solid #d1d1d6; display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+  .hidden { display: none !important; }
+
+  @media(max-width: 860px) { .dashboard-grid, .form-grid { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+
+<div class="app-container">
+  
+  <!-- TAB NAVIGATION -->
+  <div class="tab-nav">
+    <button class="tab-btn active" onclick="openTab(event, 'tab-calc')">Standard Parts Lookup & Calc</button>
+    <button class="tab-btn" onclick="openTab(event, 'tab-wur')">Shield+ WUR</button>
+  </div>
+
+  <!-- TAB 1: STANDARD CALCULATOR & PART LOOKUP -->
+  <div id="tab-calc" class="tab-pane active">
+    <div class="dashboard-grid">
+      
+      <!-- LEFT COLUMN: INPUTS & SEARCH -->
+      <div class="card">
+        <div>
+          <div class="card-header">
+            <h2>🔍 Part Search & Input Parameters</h2>
+            <div class="subtitle">Select Apple part or manually adjust GSX price & category</div>
+          </div>
+
+          <!-- Fetching Loading State -->
+          <div id="loading-container">
+            <div class="loader-text" id="loader-title">Fetching Data from Server...</div>
+            <div class="loader-subtext" id="loader-desc">Please wait a few moments while the Apple parts list is downloaded and processed.</div>
+          </div>
+
+          <!-- Cascading Dropdowns -->
+          <div class="form-grid">
+            <div class="form-group">
+              <label>1. Device Family</label>
+              <select id="lk-family" disabled><option value="">-- Load DB First --</option></select>
+            </div>
+            <div class="form-group">
+              <label>2. Product Model</label>
+              <select id="lk-model" disabled><option value="">-- Select Family --</option></select>
+            </div>
+            <div class="form-group full-width">
+              <label>3. Part Category</label>
+              <select id="lk-category" disabled><option value="">-- Select Model --</option></select>
+            </div>
+            <div class="form-group full-width">
+              <label>4. Select Part</label>
+              <select id="lk-part" disabled><option value="">-- Select Category --</option></select>
+            </div>
+            <div class="form-group full-width">
+              <label>5. Pricing Option</label>
+              <select id="lk-option" disabled><option value="">-- Select Part --</option></select>
+            </div>
+          </div>
+
+          <hr class="section-divider">
+
+          <!-- Pricing Overrides -->
+          <div class="form-grid">
+            <div class="form-group full-width">
+              <label>GNext Markup Category</label>
+              <select id="category"></select>
+            </div>
+            <div class="form-group">
+              <label>GSX Price (USD)</label>
+              <input id="gsx" type="number" min="0" step="0.01" placeholder="e.g. 296">
+            </div>
+            <div class="form-group">
+              <label>Exchange Rate (MMK)</label>
+              <input id="exchange" type="number" min="0" step="1" value="4500">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT COLUMN: QUOTE SUMMARY OUTPUT -->
+      <div class="card">
+        <div>
+          <div class="card-header">
+            <h2>💰 Customer Quote Output</h2>
+            <div class="subtitle">Live pricing breakdown based on active GNext formulas</div>
+          </div>
+
+          <!-- Quick Metrics (Now with 4 columns for Stock) -->
+          <div class="metrics-row">
+            <div class="metric-badge">
+              <small>Markup %</small>
+              <strong id="markup">—</strong>
+            </div>
+            <div class="metric-badge">
+              <small>Service Fee</small>
+              <strong id="service">—</strong>
+            </div>
+            <div class="metric-badge">
+              <small>Category</small>
+              <strong id="catDisplay">—</strong>
+            </div>
+            <div class="metric-badge stock-badge" id="stockBadgeUI">
+              <small>Live Stock</small>
+              <strong id="stockDisplay" style="color: #8e8e93;">—</strong>
+            </div>
+          </div>
+        </div>
+
+        <!-- Result Box -->
+        <div class="result-card">
+          <div class="label">Customer Total Price</div>
+          <div class="price-mmk" id="mmk">0 MMK</div>
+          <div class="price-usd" id="usd">Customer price: 0 USD</div>
+
+          <div class="breakdown-table">
+            <div class="breakdown-row"><span>Base GSX Price</span><span id="bGSX">0 USD</span></div>
+            <div class="breakdown-row"><span>Markup Amount</span><span id="bMarkup">0 USD</span></div>
+            <div class="breakdown-row"><span>5% Tax Adjustment</span><span id="bTax">0 USD</span></div>
+            <div class="breakdown-row"><span>Formula Flat Fee</span><span>+3 USD</span></div>
+            <div class="breakdown-row highlight"><span>Service Charge</span><span id="bService">0 MMK</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- COLLAPSIBLE MANAGEMENT PANEL -->
+    <div class="collapsible-card">
+      <div class="collapsible-header" onclick="toggleManagementPanel()">
+        <span>⚙️ Management Panel & Formula Configurations</span>
+        <span id="panel-toggle-icon">▼</span>
+      </div>
+      <div class="collapsible-body" id="management-body">
+        
+        <!-- DB Status Banner -->
+        <div id="db-notice" class="db-status-box hidden">
+          <div class="db-status-row">
+            <span>✅ Offline database is active. (Click sync to pull latest Netlify CSV)</span>
+            <button class="btn-reset" onclick="forceDatabaseUpdate()">Sync Latest Database</button>
+          </div>
+        </div>
+
+        <div class="formula-box">
+          <strong>Active Calculation Rules:</strong><br>
+          1. Customer USD = ROUNDUP((GSX Price × (1 + Markup %)) × 105% + 3, 0)<br>
+          2. Customer MMK = (Customer USD × Exchange Rate) + Service Charge (MMK)
+        </div>
+        <div style="overflow-x: auto;">
+          <table>
+            <thead>
+              <tr>
+                <th>Category Name</th>
+                <th>Markup %</th>
+                <th>Service Charge (MMK)</th>
+              </tr>
+            </thead>
+            <tbody id="management-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB 2: SHIELD+ WUR CALCULATOR -->
+  <div id="tab-wur" class="tab-pane">
+    <div class="dashboard-grid single">
+      <div class="card">
+        <div>
+          <div class="card-header">
+            <h2>🛡️ Shield+ WUR Calculator</h2>
+            <div class="subtitle">Dynamic formula based on damage type and unit replacement options</div>
+          </div>
+
+          <div class="form-grid">
+            <div class="form-group full-width">
+              <label>iPhone Model</label>
+              <select id="wur-model"></select>
+            </div>
+            <div class="form-group full-width">
+              <label>Exchange Rate (MMK/USD)</label>
+              <input id="wur-exchange" type="number" min="0" step="1" value="4500">
+            </div>
+          </div>
+
+          <div class="check-group">
+            <label class="check-item"><input type="checkbox" id="chk-display"> Display Damage</label>
+            <label class="check-item"><input type="checkbox" id="chk-backglass"> Back Glass Damage</label>
+            <label class="check-item"><input type="checkbox" id="chk-wur" checked> WUR (Whole Unit Replacement)</label>
+            
+            <div id="wur-options" class="sub-options">
+              <label><input type="radio" name="wur-type" value="exchange" checked> WUR Exchange</label>
+              <label><input type="radio" name="wur-type" value="stock"> WUR Stock</label>
+              
+              <div id="stock-input-group" class="hidden" style="margin-top: 6px;">
+                <label style="font-size: 11px;">WUR Stock GSX Price (USD)</label>
+                <input id="wur-stock-gsx" type="number" placeholder="Enter raw GSX price...">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="result-card">
+          <div class="label">Final Shield+ Price</div>
+          <div class="price-mmk" id="wur-mmk">0 MMK</div>
+          <div class="price-usd" id="wur-usd">Base USD: 0 USD</div>
+
+          <div class="breakdown-table">
+            <div class="breakdown-row"><span>WUR Marked-up Base</span><span id="wBr-BaseWur">0 USD</span></div>
+            <div class="breakdown-row"><span>Damage Deductions</span><span id="wBr-Deduct">0 USD</span></div>
+            <div class="breakdown-row"><span>WUR Processing Fee</span><span id="wBr-Fee">+50 USD</span></div>
+            <div class="breakdown-row highlight"><span>Service Charges</span><span id="wBr-Service">0 MMK</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// --- UI TOGGLES ---
+function openTab(evt, tabId) {
+  document.querySelectorAll(".tab-pane").forEach(p => p.classList.remove("active"));
+  document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+  document.getElementById(tabId).classList.add("active");
+  evt.currentTarget.classList.add("active");
+}
+
+function toggleManagementPanel() {
+  const body = document.getElementById("management-body");
+  const icon = document.getElementById("panel-toggle-icon");
+  if (body.classList.contains("open")) {
+    body.classList.remove("open");
+    icon.textContent = "▼";
+  } else {
+    body.classList.add("open");
+    icon.textContent = "▲";
+  }
+}
+
+// --- STANDARD CALCULATOR LOGIC ---
+const categories = [
+  ["Display 11 and 12 series", 0.15, 35000], 
+  ["Display 13 Series", 0.20, 35000],
+  ["Display 14, 15 and 16 series", 0.30, 35000], 
+  ["Display 17 series", 0.32, 35000],
+  ["iPhone battery", 0.15, 35000], 
+  ["All Mid and Rear System", 0.20, 35000],
+  ["WUR", 0.10, 0], 
+  ["Mac Parts", 0.10, 50000],
+  ["OTHER & Accessories", 0.10, 35000], 
+  ["Back Glass", 0.145, 35000]
+];
+
+const catSel = document.getElementById("category"), 
+      tb = document.getElementById("management-tbody"), 
+      gsx = document.getElementById("gsx"), 
+      ex = document.getElementById("exchange");
+
+function roundup0(n){ return Math.ceil(n); }
+function money(n){ return Math.round(n).toLocaleString("en-US") + " MMK"; }
+function usd(n){ return n.toLocaleString("en-US",{minimumFractionDigits:0,maximumFractionDigits:2}) + " USD"; }
+
+categories.forEach((c, i) => {
+  catSel.appendChild(new Option(c[0], i));
+  const tr = document.createElement("tr");
+  tr.innerHTML = `<td>${c[0]}</td><td><input type="number" step="0.005" value="${c[1]}" oninput="updateVar(${i}, 1, this.value)"></td><td><input type="number" step="1000" value="${c[2]}" oninput="updateVar(${i}, 2, this.value)"></td>`;
+  tb.appendChild(tr);
+});
+
+function updateVar(idx, fIdx, val) { 
+  categories[idx][fIdx] = Number(val) || 0; 
+  calcTab1(); 
+}
+
+function calcTab1(){
+  const c = categories[Number(catSel.value)], g = Number(gsx.value) || 0, x = Number(ex.value) || 0;
+  const beforeTax = g * (1 + c[1]), custUSD = roundup0(beforeTax * 1.05 + 3);
+  
+  document.getElementById("markup").textContent = (c[1] * 100).toFixed(c[1]*100%1?1:0) + "%";
+  document.getElementById("service").textContent = c[2] ? c[2].toLocaleString() + " MMK" : "None";
+  document.getElementById("catDisplay").textContent = c[0];
+  document.getElementById("mmk").textContent = money(custUSD * x + c[2]);
+  document.getElementById("usd").textContent = "Customer price: " + usd(custUSD);
+  document.getElementById("bGSX").textContent = usd(g);
+  document.getElementById("bMarkup").textContent = usd(beforeTax - g);
+  document.getElementById("bTax").textContent = usd(beforeTax * 0.05);
+  document.getElementById("bService").textContent = c[2] ? c[2].toLocaleString() + " MMK" : "0 MMK";
+}
+
+catSel.addEventListener("change", calcTab1); 
+gsx.addEventListener("input", calcTab1); 
+ex.addEventListener("input", function() {
+  document.getElementById("wur-exchange").value = this.value;
+  calcTab1(); calcWur();
+});
+calcTab1();
+
+
+// --- AUTO-FETCH DATABASE LOGIC & LIVE STOCK ---
+let dataMap = {};
+let stockMap = {}; 
+
+function getDeviceFamily(name) {
+  if (!name) return "Other";
+  const n = name.toLowerCase();
+  if (n.includes("iphone")) return "iPhone";
+  if (n.includes("ipad")) return "iPad";
+  if (n.includes("macbook") || n.includes("mac ") || n.includes("imac") || n.includes("mac mini") || n.includes("mac studio") || n.includes("mac pro")) return "Mac";
+  if (n.includes("watch")) return "Apple Watch";
+  if (n.includes("airpods")) return "AirPods";
+  if (n.includes("beats")) return "Beats";
+  if (n.includes("apple tv")) return "Apple TV";
+  if (n.includes("vision")) return "Vision Pro";
+  return "Accessories & Displays";
+}
+
+function getPartCategory(desc) {
+  if (!desc) return "Other / Miscellaneous";
+  const d = desc.toLowerCase();
+  if (d.includes("display") || d.includes("screen") || d.includes("lcm")) return "Display";
+  if (d.includes("logic board") || d.includes("mlb")) return "Logic Board";
+  if (d.includes("top case") || d.includes("keyboard")) return "Top Case / Keyboard";
+  if (d.includes("back glass") || d.includes("rear") || d.includes("enclosure")) return "Back Glass / Rear System";
+  if (d.includes("battery")) return "Battery";
+  if (d.includes("camera")) return "Camera";
+  if (d.includes("screw") || d.includes("bracket")) return "Screws & Hardware";
+  if (d.includes("band") || d.includes("loop")) return "Watch Bands";
+  if (d.includes("cable") || d.includes("adapter") || d.includes("power")) return "Cables & Power";
+  return "Other / Miscellaneous";
+}
+
+function autoSelectGNextCategory(modelName, partDesc) {
+  const m = (modelName || "").toLowerCase();
+  const d = (partDesc || "").toLowerCase();
+  let targetIdx = 8; 
+
+  if (m.includes("mac") || m.includes("imac")) targetIdx = 7;
+  else if (d.includes("battery")) targetIdx = 4;
+  else if (d.includes("back glass")) targetIdx = 9;
+  else if (d.includes("display") || d.includes("screen") || d.includes("lcm")) {
+    if (m.includes("17")) targetIdx = 3;
+    else if (m.includes("14") || m.includes("15") || m.includes("16")) targetIdx = 2;
+    else if (m.includes("13")) targetIdx = 1;
+    else if (m.includes("11") || m.includes("12")) targetIdx = 0;
+    else targetIdx = 2;
+  } else if (d.includes("rear") || d.includes("mid") || d.includes("enclosure")) targetIdx = 5;
+  else if (d.includes("wur")) targetIdx = 6;
+  catSel.value = targetIdx;
+}
+
+document.addEventListener("DOMContentLoaded", function() {
+  localforage.getItem('gnext_apple_parts_db').then(function(saved) {
+    if (saved) {
+      dataMap = saved;
+      hideLoaderAndShowApp();
+    } else {
+      fetchCSVFromServer();
+    }
+  });
+  fetchLiveStock();
+});
+
+// Fetches live inventory directly from the SnapDeploy Server
+async function fetchLiveStock() {
+  try {
+    const response = await fetch('/api/stock');
+    const results = await response.json();
+    
+    if (!results || results.length === 0) return;
+
+    // The API returns JSON objects looking like { part_number: "661-56125", available_stock: 5 }
+    results.forEach(row => {
+      const pNum = row.part_number;
+      const qty = row.available_stock; 
+      
+      if (pNum) {
+        stockMap[pNum.toString().trim()] = qty;
+      }
+    });
+    console.log("Successfully fetched live stock from SnapDeploy DB!");
+  } catch (err) {
+    console.warn("Could not fetch Server Stock Data.", err);
+  }
+}
+
+function forceDatabaseUpdate() {
+  if (confirm("This will download the latest data.csv from the server. Continue?")) {
+    document.getElementById('db-notice').classList.add('hidden');
+    document.getElementById('loading-container').style.display = 'block';
+    
+    localforage.removeItem('gnext_apple_parts_db').then(() => {
+      fetchCSVFromServer();
+    });
+  }
+}
+
+function fetchCSVFromServer() {
+  document.getElementById('loader-title').innerText = "Downloading CSV File...";
+  dataMap = {};
+
+  // Cache bust the Apple CSV file to always pull fresh from the server when forced
+  const dbUrl = "data.csv?t=" + new Date().getTime();
+
+  Papa.parse(dbUrl, {
+    download: true,
+    header: true,
+    skipEmptyLines: true,
+    complete: function(results) {
+      document.getElementById('loader-title').innerText = "Processing 300,000+ Parts...";
+      const rows = results.data;
+      
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        const model = row['Product Name'];
+        if (!model || !row['Part Number']) continue;
+
+        const desc = row['Part Description'] || '';
+        const part = row['Part Number'] + ' - ' + desc;
+        const option = row['Pricing Option'] ? row['Pricing Option'].trim() : 'Price';
+        const price = parseFloat(row['Price']);
+        if (isNaN(price)) continue;
+
+        const family = getDeviceFamily(model);
+        const category = getPartCategory(desc);
+
+        if (!dataMap[family]) dataMap[family] = {};
+        if (!dataMap[family][model]) dataMap[family][model] = {};
+        if (!dataMap[family][model][category]) dataMap[family][model][category] = {};
+        if (!dataMap[family][model][category][part]) dataMap[family][model][category][part] = {};
+
+        dataMap[family][model][category][part][option] = price;
+      }
+
+      localforage.setItem('gnext_apple_parts_db', dataMap).then(function() {
+        hideLoaderAndShowApp();
+      });
+    },
+    error: function(err) {
+      document.getElementById('loader-title').innerText = "❌ File Not Found";
+      document.getElementById('loader-title').style.color = "#ff3b30";
+      document.getElementById('loader-desc').innerText = "Could not locate 'data.csv' on the server. Please ensure the file is in the public folder.";
+      console.error("PapaParse Error:", err);
+    }
+  });
+}
+
+function hideLoaderAndShowApp() {
+  document.getElementById('loading-container').style.display = 'none';
+  document.getElementById('db-notice').classList.remove('hidden');
+  populateFamilyDropdown();
+}
+
+const lkFam = document.getElementById('lk-family'), lkMod = document.getElementById('lk-model'),
+      lkCat = document.getElementById('lk-category'), lkPrt = document.getElementById('lk-part'),
+      lkOpt = document.getElementById('lk-option');
+
+function populateFamilyDropdown() {
+  lkFam.innerHTML = '<option value="">-- Select Family --</option>';
+  Object.keys(dataMap).sort().forEach(f => lkFam.add(new Option(f, f)));
+  lkFam.disabled = false;
+}
+
+lkFam.addEventListener('change', function() {
+  lkMod.innerHTML = '<option value="">-- Select Model --</option>';
+  resetDropdowns([lkCat, lkPrt, lkOpt]);
+  if (!this.value) { lkMod.disabled = true; return; }
+  Object.keys(dataMap[this.value]).sort().forEach(m => lkMod.add(new Option(m, m)));
+  lkMod.disabled = false;
+});
+
+lkMod.addEventListener('change', function() {
+  lkCat.innerHTML = '<option value="">-- Select Category --</option>';
+  resetDropdowns([lkPrt, lkOpt]);
+  if (!this.value) { lkCat.disabled = true; return; }
+  Object.keys(dataMap[lkFam.value][this.value]).sort().forEach(c => lkCat.add(new Option(c, c)));
+  lkCat.disabled = false;
+});
+
+lkCat.addEventListener('change', function() {
+  lkPrt.innerHTML = '<option value="">-- Select Part --</option>';
+  resetDropdowns([lkOpt]);
+  if (!this.value) { lkPrt.disabled = true; return; }
+  Object.keys(dataMap[lkFam.value][lkMod.value][this.value]).sort().forEach(p => lkPrt.add(new Option(p, p)));
+  lkPrt.disabled = false;
+});
+
+lkPrt.addEventListener('change', function() {
+  lkOpt.innerHTML = '<option value="">-- Select Option --</option>';
+  if (!this.value) { lkOpt.disabled = true; return; }
+  const options = dataMap[lkFam.value][lkMod.value][lkCat.value][this.value];
+  Object.keys(options).forEach(opt => lkOpt.add(new Option(opt + ' ($' + options[opt] + ')', options[opt])));
+  lkOpt.disabled = false;
+  if (lkOpt.options.length > 1) { lkOpt.selectedIndex = 1; applyLookupPrice(); }
+});
+
+lkOpt.addEventListener('change', applyLookupPrice);
+
+function applyLookupPrice() {
+  const selectedPrice = parseFloat(lkOpt.value);
+  if (!isNaN(selectedPrice)) {
+    // 1. Update Pricing UI
+    gsx.value = selectedPrice;
+    autoSelectGNextCategory(lkMod.value, lkPrt.value);
+    calcTab1();
+
+    // 2. Update Live Stock UI
+    const partFullString = lkPrt.value; 
+    const partNumberOnly = partFullString.split(" - ")[0].trim();
+    const stockQty = stockMap[partNumberOnly];
+    
+    const stockBadgeUI = document.getElementById("stockBadgeUI");
+    const stockEl = document.getElementById("stockDisplay");
+
+    if (stockQty !== undefined && stockQty !== null && stockQty !== "") {
+      const qtyInt = parseInt(stockQty);
+      stockEl.innerText = stockQty + " Units";
+      
+      if (qtyInt > 0) {
+        // Green for In-Stock
+        stockBadgeUI.style.background = "#e8f5e9";
+        stockBadgeUI.style.borderColor = "#c8e6c9";
+        stockEl.style.color = "#2e7d32";
+      } else {
+        // Red for Out-of-Stock
+        stockBadgeUI.style.background = "#ffebee";
+        stockBadgeUI.style.borderColor = "#ffcdd2";
+        stockEl.style.color = "#c62828";
+        stockEl.innerText = "Out of Stock";
+      }
+    } else {
+      // Orange for Not Found in Sheet
+      stockBadgeUI.style.background = "#fff3e0";
+      stockBadgeUI.style.borderColor = "#ffe0b2";
+      stockEl.style.color = "#ef6c00";
+      stockEl.innerText = "Unknown";
+    }
+  }
+}
+
+function resetDropdowns(list) { list.forEach(d => { d.innerHTML = '<option value="">-- Select --</option>'; d.disabled = true; }); }
+
+// --- SHIELD+ WUR CALCULATOR LOGIC ---
+const wurData = [
+  { name: "16", display: 246, backglass: 121, markWurEx: 837 }, 
+  { name: "16 Pro", display: 290, backglass: 121, markWurEx: 984 },
+  { name: "16 Pro Max", display: 334, backglass: 121, markWurEx: 1117 }, 
+  { name: "16 Plus", display: 329, backglass: 121, markWurEx: 904 },
+  { name: "16e", display: 202, backglass: 121, markWurEx: 704 }, 
+  { name: "17", display: 313, backglass: 121, markWurEx: 916 },
+  { name: "17 Pro", display: 313, backglass: 121, markWurEx: 1143 }, 
+  { name: "17 Pro Max", display: 360, backglass: 121, markWurEx: 1209 },
+  { name: "17e", display: 218, backglass: 121, markWurEx: 718 }, 
+  { name: "iPhone Air", display: 313, backglass: 121, markWurEx: 1076 }
+];
+const wModel = document.getElementById("wur-model");
+wurData.forEach((m, i) => wModel.appendChild(new Option(m.name, i)));
+
+const chkDisp = document.getElementById("chk-display"), chkBg = document.getElementById("chk-backglass"), 
+      chkWur = document.getElementById("chk-wur"), wurOpts = document.getElementById("wur-options"), 
+      radType = document.getElementsByName("wur-type"), wStockBox = document.getElementById("stock-input-group"), 
+      wStockInput = document.getElementById("wur-stock-gsx"), wEx = document.getElementById("wur-exchange");
+
+function handleUI() {
+  if (chkWur.checked) {
+    wurOpts.classList.remove("hidden");
+    let isStock = document.querySelector('input[name="wur-type"]:checked').value === "stock";
+    if (isStock) wStockBox.classList.remove("hidden"); else wStockBox.classList.add("hidden");
+  } else { wurOpts.classList.add("hidden"); wStockBox.classList.add("hidden"); }
+  calcWur();
+}
+
+function calcWur() {
+  const data = wurData[Number(wModel.value)], rate = Number(wEx.value) || 0;
+  let serviceCharge = 0, deductibles = 0, finalUSD = 0, baseWUR = 0, fee = 0;
+  
+  if (chkDisp.checked) { serviceCharge += 99000; deductibles += data.display; }
+  if (chkBg.checked) { serviceCharge += 99000; deductibles += data.backglass; }
+
+  if (chkWur.checked) {
+    fee = 50; 
+    let type = document.querySelector('input[name="wur-type"]:checked').value;
+    if (type === "exchange") baseWUR = data.markWurEx;
+    else if (type === "stock") { let rawStock = Number(wStockInput.value) || 0; baseWUR = roundup0((rawStock * 1.40) + 13); }
+    finalUSD = Math.max(0, baseWUR - deductibles + fee);
+  }
+
+  document.getElementById("wur-mmk").textContent = money((finalUSD * rate) + serviceCharge);
+  document.getElementById("wur-usd").textContent = "Total Formula USD: " + usd(finalUSD);
+  document.getElementById("wBr-BaseWur").textContent = usd(baseWUR);
+  document.getElementById("wBr-Deduct").textContent = "- " + usd(deductibles);
+  document.getElementById("wBr-Fee").textContent = chkWur.checked ? "+ 50 USD" : "0 USD";
+  document.getElementById("wBr-Service").textContent = money(serviceCharge);
+}
+
+wModel.addEventListener("change", calcWur);
+wEx.addEventListener("input", function() { ex.value = this.value; calcTab1(); calcWur(); });
+chkDisp.addEventListener("change", handleUI); chkBg.addEventListener("change", handleUI); chkWur.addEventListener("change", handleUI);
+radType.forEach(r => r.addEventListener("change", handleUI)); wStockInput.addEventListener("input", calcWur);
+handleUI();
+</script>
+</body>
+</html>
