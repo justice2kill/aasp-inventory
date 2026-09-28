@@ -762,7 +762,7 @@ createApp({
             let globalPo = null;
             const poMatch = text.match(/(Gnext-SSO[^\s,]+|SSO[^\s,]+|FOC[^\s,]+)/i);
             if (poMatch) globalPo = poMatch[1];
-            const matches = [...text.matchAll(/([A-Z0-9]*661-\d{4,5})/g)];
+            const matches = [...text.matchAll(/([A-Z0-9]*(?:661|923|076|658)-\d{4,5})/gi)];
             matches.forEach((match, index) => {
                 const blockText = text.substring(match.index + match[1].length, matches[index + 1] ? matches[index + 1].index : text.length);
                 const snMatch = blockText.match(/S\/N[,\s:]+([A-Z0-9]{8,15})/i);

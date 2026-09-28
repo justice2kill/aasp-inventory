@@ -20,7 +20,8 @@ fastify.get("/api/stock", async (request, reply) => {
         p.part_number, p.model, p.description, p.base_seed_qty as current_seed_qty,
         (SELECT COUNT(*) FROM shipment_items s WHERE s.part_number = p.part_number AND s.status = 'RECEIVED' AND (s.classification IS NULL OR s.classification::text NOT IN ('LEGACY_SEED', 'FOC'))) as total_refilled_received,
         (SELECT COUNT(*) FROM usage_logs u WHERE u.part_number = p.part_number) as total_used,
-        (SELECT COUNT(*) FROM reservations r WHERE r.part_number = p.part_number AND r.status = 'RESERVED') as total_reserved
+        (SELECT COUNT(*) FROM reservations r WHERE r.part_number = p.part_number AND r.status = 'RESERVED') as total_reserved,
+        (SELECT COUNT(*) FROM shipment_items s WHERE s.part_number = p.part_number AND s.classification = 'FOC') as total_foc
       FROM parts p
       ORDER BY p.part_number
     `;
@@ -28,7 +29,13 @@ fastify.get("/api/stock", async (request, reply) => {
     const processed = result.rows.map(row => {
       const remaining = parseInt(row.current_seed_qty) + parseInt(row.total_refilled_received) - parseInt(row.total_used);
       const available = remaining - parseInt(row.total_reserved);
-      return { ...row, remaining_stock: remaining, available_stock: available };
+      return { ...row, remaining_stock: remaining, available_stock: available, total_foc: parseInt(row.total_foc) };
+    }).filter(item => {
+      // HIDE the part completely if it has 0 regular stock history and is purely an FOC item
+      if (item.remaining_stock === 0 && item.total_foc > 0 && parseInt(item.current_seed_qty) === 0 && parseInt(item.total_refilled_received) === 0) {
+        return false; 
+      }
+      return true;
     });
     return processed;
   } catch (err) { return reply.code(500).send({ error: err.message }); }
