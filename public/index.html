@@ -618,7 +618,10 @@ createApp({
     },
     computed: {
         uniqueCategories() {
-            const categories = this.stock.map(item => item.category || item.product).filter(Boolean);
+            // Collect categories/products from stock items, ignoring empty or 'Unknown' ones
+            const categories = this.stock
+                .map(item => item.category || item.product || item.classification)
+                .filter(c => c && c !== 'Unknown' && c !== 'N/A');
             return [...new Set(categories)].sort();
         },
         uniqueModels() { return [...new Set(this.stock.map(s => s.model).filter(m => m))].sort(); },

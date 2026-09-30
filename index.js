@@ -13,11 +13,40 @@ fastify.register(require("@fastify/static"), {
   prefix: "/",
 });
 
+// Helper: Auto-detect Category & Model from Description text
+function detectCategory(description) {
+  if (!description) return { category: 'Unknown', model: 'Unknown' };
+  const desc = description.toUpperCase();
+  
+  let category = 'Other';
+  if (desc.includes('DISPLAY') || desc.includes('SCREEN')) category = 'Display';
+  else if (desc.includes('BATTERY')) category = 'Battery';
+  else if (desc.includes('CAMERA') || desc.includes('CAM')) category = 'Camera';
+  else if (desc.includes('MLB') || desc.includes('LOGIC BOARD') || desc.includes('BOARD')) category = 'Logic Board';
+  else if (desc.includes('ENCLOSURE') || desc.includes('TOP CASE') || desc.includes('HOUSING')) category = 'Enclosure';
+  else if (desc.includes('CABLE') || desc.includes('FLEX')) category = 'Flex Cable';
+  else if (desc.includes('SPEAKER') || desc.includes('AUDIO')) category = 'Audio / Speaker';
+  else if (desc.includes('ADAPTER') || desc.includes('POWER')) category = 'Power / Adapter';
+  else if (desc.includes('ADAPTER') || desc.includes('POWER')) category = 'Power Adapter';
+
+  let model = 'Unknown';
+  if (desc.includes('IPHONE')) model = 'iPhone';
+  else if (desc.includes('MACBOOK') || desc.includes('MAC')) model = 'Mac';
+  else if (desc.includes('IPAD')) model = 'iPad';
+  else if (desc.includes('WATCH')) model = 'Apple Watch';
+  
+  return { category, model };
+}
+
 fastify.get("/api/stock", async (request, reply) => {
   try {
     const query = `
       SELECT 
-        p.part_number, p.model, p.description, p.base_seed_qty as current_seed_qty,
+        p.part_number, 
+        p.product, 
+        p.model, 
+        p.description, 
+        p.base_seed_qty as current_seed_qty,
         (SELECT COUNT(*) FROM shipment_items s WHERE s.part_number = p.part_number AND s.status = 'RECEIVED' AND (s.classification IS NULL OR s.classification::text NOT IN ('LEGACY_SEED', 'FOC'))) as total_refilled_received,
         (SELECT COUNT(*) FROM usage_logs u WHERE u.part_number = p.part_number) as total_used,
         (SELECT COUNT(*) FROM reservations r WHERE r.part_number = p.part_number AND r.status = 'RESERVED') as total_reserved,
@@ -25,20 +54,21 @@ fastify.get("/api/stock", async (request, reply) => {
       FROM parts p
       ORDER BY p.part_number
     `;
-    const result = await pool.query(query);
-    const processed = result.rows.map(row => {
-      const remaining = parseInt(row.current_seed_qty) + parseInt(row.total_refilled_received) - parseInt(row.total_used);
-      const available = remaining - parseInt(row.total_reserved);
-      return { ...row, remaining_stock: remaining, available_stock: available, total_foc: parseInt(row.total_foc) };
-    }).filter(item => {
-      // HIDE the part completely if it has 0 regular stock history and is purely an FOC item
-      if (item.remaining_stock === 0 && item.total_foc > 0 && parseInt(item.current_seed_qty) === 0 && parseInt(item.total_refilled_received) === 0) {
-        return false; 
-      }
-      return true;
+    const { rows } = await pool.query(query);
+
+    const stock = rows.map(r => {
+      const remaining = Number(r.current_seed_qty) + Number(r.total_refilled_received) - Number(r.total_used);
+      return {
+        ...r,
+        remaining_stock: remaining,
+        available_stock: remaining - Number(r.total_reserved)
+      };
     });
-    return processed;
-  } catch (err) { return reply.code(500).send({ error: err.message }); }
+
+    return stock;
+  } catch (err) {
+    return reply.code(500).send({ error: err.message });
+  }
 });
 
 fastify.post("/api/add-legacy-sn", async (request, reply) => {
@@ -92,9 +122,18 @@ fastify.post("/api/upload-packing-list", async (request, reply) => {
     let availableDbItems = [...dbItems];
 
     for (let item of items) {
+      // Auto-detect Category & Model if missing
+      const { category, model } = detectCategory(item.description);
+
       // Ensure the part profile exists
-      const partQuery = `INSERT INTO parts (part_number, product, model, description, base_seed_qty) VALUES ($1, 'Unknown', 'Unknown', 'Auto-added from Packing List', 0) ON CONFLICT (part_number) DO NOTHING`;
-      await pool.query(partQuery, [item.partNumber]);
+      const partQuery = `
+        INSERT INTO parts (part_number, product, model, description, base_seed_qty) 
+        VALUES ($1, $2, $3, $4, 0) 
+        ON CONFLICT (part_number) DO UPDATE 
+        SET product = CASE WHEN parts.product = 'Unknown' OR parts.product IS NULL THEN EXCLUDED.product ELSE parts.product END,
+            model = CASE WHEN parts.model = 'Unknown' OR parts.model IS NULL THEN EXCLUDED.model ELSE parts.model END
+      `;
+      await pool.query(partQuery, [item.partNumber, category, model, item.description || 'Auto-added from Packing List']);
 
       let matchIndex = -1;
 
@@ -121,7 +160,7 @@ fastify.post("/api/upload-packing-list", async (request, reply) => {
       if (matchIndex !== -1) {
         const matchedDbItem = availableDbItems[matchIndex];
         
-        // FORCE OVERWRITE: Fix the chopped/wrong PO numbers
+        // FORCE OVERWRITE: Fix chopped or incorrect PO numbers
         if (item.poNumber && item.poNumber !== 'N/A') {
            await pool.query(`UPDATE shipment_items SET po_number = $1 WHERE id = $2`, [item.poNumber, matchedDbItem.id]);
         }
@@ -249,7 +288,7 @@ fastify.get("/api/usage-history", async (request, reply) => {
   } catch (err) { return reply.code(500).send({ error: err.message }); }
 });
 
-// NEW: Manual Add Endpoint with Remark handling
+// Manual Add Endpoint
 fastify.post("/api/manual-add", async (request, reply) => {
   try {
     const { partNumber, serialNumber, classification, remark } = request.body;
@@ -264,15 +303,17 @@ fastify.post("/api/manual-add", async (request, reply) => {
     return { success: true };
   } catch (err) { return reply.code(500).send({ error: err.message }); }
 });
-// NEW: Edit Part Details Endpoint
+
+// Edit Part Details Endpoint (Supports Category, Model, and Description)
 fastify.post("/api/update-part", async (request, reply) => {
   try {
-    const { partNumber, model, description } = request.body;
-    const query = `UPDATE parts SET model = $1, description = $2 WHERE part_number = $3`;
-    await pool.query(query, [model, description, partNumber]);
+    const { partNumber, product, model, description } = request.body;
+    const query = `UPDATE parts SET product = COALESCE($1, product), model = $2, description = $3 WHERE part_number = $4`;
+    await pool.query(query, [product || null, model, description, partNumber]);
     return { success: true };
   } catch (err) { return reply.code(500).send({ error: err.message }); }
 });
+
 fastify.listen({ port: 3000, host: "0.0.0.0" }, function (err, address) {
   if (err) { console.error(err); process.exit(1); }
   console.log(`Your app is listening on ${address}`);
