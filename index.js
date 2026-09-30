@@ -80,30 +80,60 @@ fastify.post("/api/upload-packing-list", async (request, reply) => {
     const items = request.body.items;
     let addedCount = 0;
     
-    // NEW: This tracks how many of the exact same item we've seen in this file
-    const sessionCounts = {}; 
+    const awbNumber = items.length > 0 ? items[0].awb : null;
+    if (!awbNumber) return { success: true, addedCount: 0 };
+
+    // Get a snapshot of what is already in the database for this AWB
+    const { rows: dbItems } = await pool.query(
+      `SELECT id, part_number, serial_number, repair_id, po_number FROM shipment_items WHERE awb_number = $1`, 
+      [awbNumber]
+    );
+
+    let availableDbItems = [...dbItems];
 
     for (let item of items) {
+      // Ensure the part profile exists
       const partQuery = `INSERT INTO parts (part_number, product, model, description, base_seed_qty) VALUES ($1, 'Unknown', 'Unknown', 'Auto-added from Packing List', 0) ON CONFLICT (part_number) DO NOTHING`;
       await pool.query(partQuery, [item.partNumber]);
 
-      // NEW: Create a unique signature for this exact item
-      const matchKey = `${item.awb}_${item.partNumber}_${item.serialNumber || 'null'}_${item.repairId || 'null'}`;
-      if (sessionCounts[matchKey] === undefined) sessionCounts[matchKey] = 0;
+      let matchIndex = -1;
 
-      // NEW: We now check the database to see if this exact item AND Repair ID already exist
-      const checkQuery = `SELECT id FROM shipment_items WHERE awb_number = $1 AND part_number = $2 AND (serial_number = $3 OR (serial_number IS NULL AND $3 IS NULL)) AND (repair_id = $4 OR (repair_id IS NULL AND $4 IS NULL))`;
-      const existing = await pool.query(checkQuery, [item.awb, item.partNumber, item.serialNumber || null, item.repairId || null]);
+      // 1. Try to find a strict match (Part + SN + Repair ID)
+      matchIndex = availableDbItems.findIndex(db => 
+        db.part_number === item.partNumber && 
+        (db.serial_number === item.serialNumber || (!db.serial_number && !item.serialNumber)) &&
+        (db.repair_id === item.repairId || (!db.repair_id && !item.repairId))
+      );
 
-      // NEW: If the database has fewer of these items than the file currently requires, insert it!
-      if (sessionCounts[matchKey] >= existing.rows.length) {
+      // 2. If no strict match, try matching just Part + Repair ID (Assumes S/N was added later during check-in)
+      if (matchIndex === -1) {
+        matchIndex = availableDbItems.findIndex(db => 
+          db.part_number === item.partNumber && 
+          (db.repair_id === item.repairId || (!db.repair_id && !item.repairId))
+        );
+      }
+
+      // 3. If STILL no match, fallback to just matching the Part Number
+      if (matchIndex === -1) {
+        matchIndex = availableDbItems.findIndex(db => db.part_number === item.partNumber);
+      }
+
+      if (matchIndex !== -1) {
+        // We found the existing part!
+        const matchedDbItem = availableDbItems[matchIndex];
+        
+        // FORCE OVERWRITE: Update the database with the new correct PO
+        if (item.poNumber && item.poNumber !== 'N/A') {
+           await pool.query(`UPDATE shipment_items SET po_number = $1 WHERE id = $2`, [item.poNumber, matchedDbItem.id]);
+        }
+        
+        availableDbItems.splice(matchIndex, 1); // Remove from pool to prevent double-matching
+      } else {
+        // Genuinely missing part! Insert it.
         const query = `INSERT INTO shipment_items (awb_number, part_number, serial_number, qty, status, repair_id, po_number) VALUES ($1, $2, $3, $4, 'IN_TRANSIT', $5, $6)`;
         await pool.query(query, [item.awb, item.partNumber, item.serialNumber || null, item.qty || 1, item.repairId || null, item.poNumber || null]);
         addedCount++;
       }
-      
-      // Tell the session tracker we successfully processed one
-      sessionCounts[matchKey]++;
     }
     return { success: true, addedCount };
   } catch (err) { return reply.code(500).send({ error: err.message }); }

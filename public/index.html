@@ -187,7 +187,6 @@
                 <div class="bg-blue-50/50 p-4 border-b border-gray-200 flex justify-between items-center">
                     <div class="flex items-center gap-4">
                         <span class="font-bold text-blue-900 flex items-center gap-2">AWB: {{ parsedAwb }}</span>
-                        <span v-if="parsedItems[0].poNumber" class="text-xs font-bold bg-white text-gray-600 px-2 py-0.5 rounded border border-blue-200">PO: {{ parsedItems[0].poNumber }}</span>
                     </div>
                     <span class="text-xs font-bold bg-white text-blue-700 px-3 py-1 rounded-full border border-blue-100 shadow-sm">{{ parsedItems.length }} parts</span>
                 </div>
@@ -195,6 +194,7 @@
                     <thead>
                         <tr class="bg-gray-50 text-gray-500 border-b border-gray-100 text-xs uppercase tracking-wider">
                             <th class="p-3 pl-6 font-semibold">Part Number</th>
+                            <th class="p-3 font-semibold text-purple-700">PO Number</th>
                             <th class="p-3 font-semibold text-amber-700">Repair ID (G-Code)</th>
                             <th class="p-3 font-semibold">Serial Number</th>
                         </tr>
@@ -202,6 +202,7 @@
                     <tbody class="divide-y divide-gray-100">
                         <tr v-for="(item, idx) in parsedItems" :key="idx" class="hover:bg-gray-50">
                             <td class="p-3 pl-6 font-mono font-bold text-gray-800">{{ item.partNumber }}</td>
+                            <td class="p-3 font-mono font-medium text-purple-700 bg-purple-50/30">{{ item.poNumber || 'N/A' }}</td>
                             <td class="p-3 font-mono font-medium text-amber-700 bg-amber-50/30">{{ item.repairId || 'No G-Code Found' }}</td>
                             <td class="p-3 font-mono text-blue-600 text-xs">{{ item.serialNumber || 'N/A' }}</td>
                         </tr>
@@ -228,7 +229,6 @@
                         <div>
                             <h3 class="text-xl font-bold text-gray-900 flex items-center flex-wrap gap-2">
                                 AWB {{ awb.awb_number }}
-                                <span v-if="awb.po_number" class="text-[10px] font-bold bg-slate-100 text-slate-700 px-2 py-1 rounded border border-slate-200 uppercase tracking-wide">PO: {{ awb.po_number }}</span>
                             </h3>
                         </div>
                         <span v-if="awb.received_parts === awb.total_parts" class="bg-green-100 text-green-700 text-xs font-bold px-3 py-1 rounded-full shrink-0">Completed</span>
@@ -247,8 +247,11 @@
                         <div v-for="(item, idx) in awb.items" :key="'item-'+idx" class="flex justify-between items-center py-2 border-b border-gray-50 last:border-0 text-sm">
                             <span class="font-mono font-medium text-gray-800 flex items-center gap-1.5 flex-wrap">
                                 {{ item.part }} 
-                                <span v-if="item.repair_id || item.po_number" class="text-[10px] font-bold bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded border border-amber-200">
-                                    {{ item.repair_id || item.po_number }}
+                                <span v-if="item.po_number && item.po_number !== 'N/A'" class="text-[10px] font-bold bg-purple-50 text-purple-700 px-1.5 py-0.5 rounded border border-purple-200">
+                                    PO: {{ item.po_number }}
+                                </span>
+                                <span v-if="item.repair_id" class="text-[10px] font-bold bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded border border-amber-200">
+                                    {{ item.repair_id }}
                                 </span>
                                 <span v-if="item.sn" class="text-gray-400 text-xs">({{ item.sn }})</span>
                             </span>
@@ -273,6 +276,7 @@
                     <div class="flex-1 w-full">
                         <div class="flex items-center gap-2 mb-2">
                             <span class="bg-blue-100 text-blue-800 text-sm font-extrabold px-3 py-1 rounded-md uppercase tracking-wide shadow-sm border border-blue-200">AWB: {{ item.awb_number }}</span>
+                            <span v-if="item.po_number && item.po_number !== 'N/A'" class="bg-purple-100 text-purple-800 text-xs font-bold px-2 py-1 rounded-md uppercase tracking-wide border border-purple-200">PO: {{ item.po_number }}</span>
                             <span v-if="item.repair_id" class="bg-amber-100 text-amber-800 text-xs font-bold px-2 py-1 rounded-md uppercase tracking-wide border border-amber-200">Repair: {{ item.repair_id }}</span>
                         </div>
                         <p class="font-mono font-extrabold text-2xl text-gray-900 mb-4 mt-2">{{ item.part_number }}</p>
@@ -388,7 +392,7 @@
                             <td class="p-4 font-medium">{{ new Date(item.received_at).toLocaleDateString() }}</td>
                             <td class="p-4">
                                 <span class="font-bold text-gray-900 block">{{ item.awb_number }}</span>
-                                <span v-if="item.po_number" class="text-xs text-gray-500">PO: {{ item.po_number }}</span>
+                                <span v-if="item.po_number && item.po_number !== 'N/A'" class="text-xs text-gray-500">PO: {{ item.po_number }}</span>
                             </td>
                             <td class="p-4">
                                 <span class="font-mono font-bold text-gray-900 block">{{ item.part_number }}</span>
@@ -606,21 +610,16 @@ createApp({
     },
     watch: {
         activeTab(newTab) {
-            // Lazy load the heavy data only when the Reports tab is opened
             if (newTab === 'reports') {
                 this.fetchDataForReports();
-            } 
-            // Keep the main lists fresh if they click back
-            else if (newTab === 'report') {
+            } else if (newTab === 'report') {
                 this.fetchStock();
-            } 
-            else if (newTab === 'awb') {
+            } else if (newTab === 'awb') {
                 this.fetchAWBs();
             }
         }
     },
     mounted() { 
-        // Only load the lightweight data on startup!
         this.fetchStock(); 
         this.fetchAWBs(); 
     },
@@ -647,6 +646,18 @@ createApp({
             this.downloadExcel(cleanData, "AASP_Stock_Report");
         },
         exportReport() {
+            // Build a smart date tag for the filename
+            let dateSuffix = '';
+            if (this.reportStart && this.reportEnd) {
+                dateSuffix = `_${this.reportStart}_to_${this.reportEnd}`;
+            } else if (this.reportStart) {
+                dateSuffix = `_from_${this.reportStart}`;
+            } else if (this.reportEnd) {
+                dateSuffix = `_until_${this.reportEnd}`;
+            } else {
+                dateSuffix = `_All_Dates`;
+            }
+
             if (this.reportType === 'receiving') {
                 const cleanData = this.filteredReceiving.map(item => ({
                     "Date Received": new Date(item.received_at).toLocaleDateString(),
@@ -657,7 +668,7 @@ createApp({
                     "Serial Number": item.serial_number || 'N/A',
                     "Classification": item.classification || 'N/A'
                 }));
-                this.downloadExcel(cleanData, "Receiving_History");
+                this.downloadExcel(cleanData, `Receiving_History${dateSuffix}`);
             } else {
                 const cleanData = this.filteredUsage.map(item => ({
                     "Date Used": new Date(item.used_at).toLocaleDateString(),
@@ -667,7 +678,7 @@ createApp({
                     "Serial Number": item.serial_number || 'N/A',
                     "Technician": item.technician
                 }));
-                this.downloadExcel(cleanData, "Usage_History");
+                this.downloadExcel(cleanData, `Usage_History${dateSuffix}`);
             }
         },
         async fetchDataForReports() { await Promise.all([this.fetchHistory(), this.fetchUsage()]); },
@@ -729,9 +740,7 @@ createApp({
                 alert("Error adding part: " + err.message);
             }
         },
-
         openEditModal(item) {
-            // Only auto-fill if it's NOT the placeholder text, otherwise leave blank to prompt user
             this.editForm = { 
                 partNumber: item.part_number, 
                 model: item.model === 'Unknown' ? '' : item.model, 
@@ -754,7 +763,6 @@ createApp({
                 alert("Error updating part: " + err.message);
             }
         },
-
         async findPartToUse() {
             this.useSearchError = ''; const q = this.useSearch.trim(); if(!q) return;
             const stockItem = this.stock.find(s => s.part_number.toLowerCase() === q.toLowerCase());
@@ -787,30 +795,72 @@ createApp({
         parseAppleText() {
             this.parsedItems = []; this.parsedAwb = ''; 
             const text = this.rawPDFText; if (!text) return;
+            
+            // Extract AWB
             const awbMatch = text.match(/HAWB[^\d]*(\d+)/i) || text.match(/AWB[^\d]*(\d+)/i) || text.match(/Tracking[^\d]*(\d+)/i); 
             if (awbMatch) this.parsedAwb = awbMatch[1];
+            
+            // Fallback for global PO if a specific line doesn't have one
             let globalPo = null;
             const poMatch = text.match(/(Gnext-SSO[^\s,]+|SSO[^\s,]+|FOC[^\s,]+)/i);
             if (poMatch) globalPo = poMatch[1];
+            
             const matches = [...text.matchAll(/([A-Z0-9]*(?:661|923|076|658)-\d{4,5})/gi)];
             matches.forEach((match, index) => {
                 const blockText = text.substring(match.index + match[1].length, matches[index + 1] ? matches[index + 1].index : text.length);
                 const snMatch = blockText.match(/S\/N[,\s:]+([A-Z0-9]{8,15})/i);
+                
                 let repairMatch = blockText.match(/(G\d{8,10})/i);
                 if (!repairMatch) repairMatch = text.match(/(G\d{8,10})/i);
                 
-                // NEW: Search for Apple's quantity digit right before the Ship-To code (e.g. 3.0,,"SI0228)
+                // Extract Exact Quantity
                 let qty = 1;
                 const qtyMatch = blockText.match(/(?:,|\b)(\d+)(?:\.0+)?[,\s]+["']?SI/i);
                 if (qtyMatch) {
                     qty = parseInt(qtyMatch[1], 10);
                 }
                 
-                // NEW: Push the item multiple times based on its exact quantity
+                // 1. Get Top Half of PO (From the same line as the part)
+                let localPo = globalPo;
+                const lineStart = text.lastIndexOf('\n', match.index);
+                const prefix = text.substring(lineStart === -1 ? 0 : lineStart, match.index);
+                const tokens = prefix.split(',').map(t => t.trim()).filter(t => t);
+                
+                if (tokens.length >= 3) {
+                    localPo = tokens[tokens.length - 3];
+                }
+                
+                // 2. Get Bottom Half of PO (From the rows directly below it)
+                let contPo = "";
+                // NEW: Flexible radar that catches ANY string ending in -IW or -OW
+                const contMatch = blockText.match(/,+([A-Za-z0-9\-_]+-(?:IW|OW)),+/i);
+                if (contMatch) {
+                    contPo = contMatch[1];
+                }
+                
+                // 3. Smart Stitching: Find the overlap and merge them back together!
+                if (localPo && contPo && localPo !== 'N/A') {
+                    let maxOverlap = 0;
+                    let a = localPo.trim();
+                    let b = contPo.trim();
+                    
+                    for (let i = 1; i <= Math.min(a.length, b.length); i++) {
+                        if (a.substring(a.length - i).toLowerCase() === b.substring(0, i).toLowerCase()) {
+                            maxOverlap = i;
+                        }
+                    }
+                    if (maxOverlap > 0) {
+                        localPo = a + b.substring(maxOverlap); // Merge!
+                    } else {
+                        localPo = a + b; // Fallback concatenation
+                    }
+                }
+                
+                // Save the parts
                 for (let i = 0; i < qty; i++) {
                     this.parsedItems.push({ 
                         awb: this.parsedAwb || 'UNKNOWN_AWB', 
-                        poNumber: globalPo,
+                        poNumber: localPo, 
                         partNumber: match[1], 
                         serialNumber: snMatch ? snMatch[1] : null, 
                         repairId: repairMatch ? repairMatch[1] : null,
