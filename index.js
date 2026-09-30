@@ -83,7 +83,7 @@ fastify.post("/api/upload-packing-list", async (request, reply) => {
     const awbNumber = items.length > 0 ? items[0].awb : null;
     if (!awbNumber) return { success: true, addedCount: 0 };
 
-    // Get a snapshot of what is already in the database for this AWB
+    // Get snapshot of existing database items for this AWB
     const { rows: dbItems } = await pool.query(
       `SELECT id, part_number, serial_number, repair_id, po_number FROM shipment_items WHERE awb_number = $1`, 
       [awbNumber]
@@ -98,14 +98,14 @@ fastify.post("/api/upload-packing-list", async (request, reply) => {
 
       let matchIndex = -1;
 
-      // 1. Try to find a strict match (Part + SN + Repair ID)
+      // 1. Strict match (Part + SN + Repair ID)
       matchIndex = availableDbItems.findIndex(db => 
         db.part_number === item.partNumber && 
         (db.serial_number === item.serialNumber || (!db.serial_number && !item.serialNumber)) &&
         (db.repair_id === item.repairId || (!db.repair_id && !item.repairId))
       );
 
-      // 2. If no strict match, try matching just Part + Repair ID (Assumes S/N was added later during check-in)
+      // 2. Fallback match (Part + Repair ID)
       if (matchIndex === -1) {
         matchIndex = availableDbItems.findIndex(db => 
           db.part_number === item.partNumber && 
@@ -113,23 +113,21 @@ fastify.post("/api/upload-packing-list", async (request, reply) => {
         );
       }
 
-      // 3. If STILL no match, fallback to just matching the Part Number
+      // 3. Final fallback (Part Number only)
       if (matchIndex === -1) {
         matchIndex = availableDbItems.findIndex(db => db.part_number === item.partNumber);
       }
 
       if (matchIndex !== -1) {
-        // We found the existing part!
         const matchedDbItem = availableDbItems[matchIndex];
         
-        // FORCE OVERWRITE: Update the database with the new correct PO
+        // FORCE OVERWRITE: Fix the chopped/wrong PO numbers
         if (item.poNumber && item.poNumber !== 'N/A') {
            await pool.query(`UPDATE shipment_items SET po_number = $1 WHERE id = $2`, [item.poNumber, matchedDbItem.id]);
         }
-        
-        availableDbItems.splice(matchIndex, 1); // Remove from pool to prevent double-matching
+        availableDbItems.splice(matchIndex, 1);
       } else {
-        // Genuinely missing part! Insert it.
+        // Genuine new part insertion
         const query = `INSERT INTO shipment_items (awb_number, part_number, serial_number, qty, status, repair_id, po_number) VALUES ($1, $2, $3, $4, 'IN_TRANSIT', $5, $6)`;
         await pool.query(query, [item.awb, item.partNumber, item.serialNumber || null, item.qty || 1, item.repairId || null, item.poNumber || null]);
         addedCount++;

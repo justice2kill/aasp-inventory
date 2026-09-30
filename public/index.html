@@ -35,7 +35,7 @@
             </div>
             <nav class="hidden md:flex space-x-1 bg-gray-100 p-1 rounded-full border border-gray-200 items-center">
                 <button @click="activeTab = 'report'" :class="activeTab === 'report' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'" class="px-5 py-1.5 rounded-full text-sm font-semibold transition-all">Stock</button>
-                <button @click="activeTab = 'upload'" :class="activeTab === 'upload' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'" class="px-5 py-1.5 rounded-full text-sm font-semibold transition-all">Import / Upload</button>
+                <button @click="activeTab = 'upload'" :class="activeTab === 'upload' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'" class="px-5 py-1.5 rounded-full text-sm font-semibold transition-all">Data Hub</button>
                 <button @click="activeTab = 'awb'" :class="activeTab === 'awb' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'" class="px-5 py-1.5 rounded-full text-sm font-semibold transition-all">Tracker</button>
                 <button @click="activeTab = 'receive'" :class="activeTab === 'receive' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'" class="px-5 py-1.5 rounded-full text-sm font-semibold transition-all">Receive</button>
                 <button @click="activeTab = 'use'" :class="activeTab === 'use' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'" class="px-5 py-1.5 rounded-full text-sm font-semibold transition-all">Use</button>
@@ -53,23 +53,53 @@
         
         <!-- Stock Report -->
         <div v-show="activeTab === 'report'" class="bg-white rounded-2xl smooth-shadow border border-gray-100 p-8">
-            <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4 no-print">
-                <div>
-                    <h2 class="text-2xl font-bold tracking-tight text-gray-900">Live Stock Balance</h2>
-                </div>
-                <div class="flex items-center space-x-3 w-full md:w-auto">
-                    <label class="flex items-center gap-2 text-sm font-medium text-gray-600 bg-white border border-gray-200 px-3 py-2.5 rounded-xl cursor-pointer hover:bg-gray-50 shadow-sm transition">
-                        <input type="checkbox" v-model="showDetails" class="w-4 h-4 text-[#0071e3] rounded border-gray-300">
-                        Show Breakdown
-                    </label>
-                    <select v-model="modelFilter" class="p-2.5 border border-gray-200 rounded-xl bg-gray-50 text-sm font-medium text-gray-700 w-full md:w-auto">
+            <h2 class="text-2xl font-bold tracking-tight text-gray-900 mb-6 no-print">Live Stock Balance</h2>
+            
+            <div class="flex flex-col xl:flex-row justify-between items-center bg-white p-3 rounded-xl shadow-sm border border-gray-100 mb-6 gap-4 no-print">
+                <!-- Left Side: Search, Category & Model Filters -->
+                <div class="flex flex-wrap w-full xl:w-auto gap-3">
+                    <select v-model="categoryFilter" class="bg-gray-50 border border-gray-200 text-gray-700 py-2.5 px-4 rounded-lg focus:ring-2 focus:ring-[#0071e3] focus:outline-none text-sm font-medium transition min-w-[140px]">
+                        <option value="">All Categories</option>
+                        <option v-for="category in uniqueCategories" :key="category" :value="category">{{ category }}</option>
+                    </select>
+
+                    <select v-model="modelFilter" class="bg-gray-50 border border-gray-200 text-gray-700 py-2.5 px-4 rounded-lg focus:ring-2 focus:ring-[#0071e3] focus:outline-none text-sm font-medium transition min-w-[140px]">
                         <option value="">All Models</option>
                         <option v-for="model in uniqueModels" :key="model" :value="model">{{ model }}</option>
                     </select>
-                    <input v-model="searchQuery" type="text" placeholder="Search Part Number..." class="p-2.5 border border-gray-200 rounded-xl w-full md:w-64 text-sm font-mono bg-gray-50 text-gray-700">
-                    <button @click="fetchStock" class="bg-white border border-gray-200 px-4 py-2.5 rounded-xl text-sm hover:bg-gray-50 font-semibold shadow-sm text-gray-700 transition">Refresh</button>
-                    <button @click="printPage" class="bg-slate-900 hover:bg-black text-white px-4 py-2.5 rounded-xl text-sm font-bold shadow-sm transition">Print</button>
-                    <button @click="exportStock" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2.5 rounded-xl text-sm font-bold shadow-sm transition">Excel</button>
+                    
+                    <input type="text" v-model="searchQuery" placeholder="Search Part Number..." class="w-full xl:w-64 bg-gray-50 border border-gray-200 text-gray-700 py-2.5 px-4 rounded-lg focus:ring-2 focus:ring-[#0071e3] focus:outline-none text-sm transition">
+                </div>
+
+                <!-- Right Side: Toggles & Icon Actions -->
+                <div class="flex items-center gap-3 w-full xl:w-auto justify-between xl:justify-end">
+                    
+                    <!-- Sleek View Toggles -->
+                    <div class="flex bg-gray-100 p-1 rounded-lg">
+                        <label class="flex items-center text-sm font-medium px-4 py-1.5 rounded-md cursor-pointer transition-colors" :class="showDetails ? 'bg-white shadow-sm text-[#0071e3]' : 'text-gray-500 hover:text-gray-700'">
+                            <input type="checkbox" v-model="showDetails" class="hidden">
+                            Breakdown
+                        </label>
+                        <label class="flex items-center text-sm font-medium px-4 py-1.5 rounded-md cursor-pointer transition-colors" :class="hideFOC ? 'bg-white shadow-sm text-[#0071e3]' : 'text-gray-500 hover:text-gray-700'">
+                            <input type="checkbox" v-model="hideFOC" class="hidden">
+                            Hide FOC
+                        </label>
+                    </div>
+
+                    <div class="w-px h-6 bg-gray-300 mx-2 hidden md:block"></div> <!-- Vertical Divider -->
+
+                    <!-- Action Icons -->
+                    <div class="flex gap-1">
+                        <button @click="fetchStock" title="Refresh" class="p-2 text-gray-500 hover:text-[#0071e3] hover:bg-blue-50 rounded-lg transition">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                        </button>
+                        <button @click="printPage" title="Print" class="p-2 text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path></svg>
+                        </button>
+                        <button @click="exportStock" title="Export Excel" class="p-2 text-green-600 hover:text-green-800 hover:bg-green-50 rounded-lg transition">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                        </button>
+                    </div>
                 </div>
             </div>
             
@@ -161,28 +191,46 @@
             </div>
         </div>
 
-        <!-- Import Shipments -->
-        <div v-show="activeTab === 'upload'" class="bg-white rounded-2xl smooth-shadow border border-gray-100 p-8 max-w-4xl mx-auto no-print">
-            <h2 class="text-2xl font-bold tracking-tight text-gray-900 mb-2">Upload Packing List</h2>
-            <p class="text-sm text-gray-500 mb-8">Upload an Excel file (.xls) or paste raw text from Apple PDFs to auto-extract AWB, POs, G-codes, and part data.</p>
+        <!-- Data Hub (Uploads) -->
+        <div v-show="activeTab === 'upload'" class="bg-white rounded-2xl smooth-shadow border border-gray-100 p-8 max-w-6xl mx-auto no-print">
+            <h2 class="text-2xl font-bold tracking-tight text-gray-900 mb-2">Data Hub</h2>
+            <p class="text-sm text-gray-500 mb-8">Centralized bulk operations for incoming shipments and daily usage logs.</p>
             
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
-                <div class="border-2 border-dashed border-gray-200 rounded-2xl p-8 text-center bg-gray-50/50 hover:bg-gray-50 transition">
-                    <div class="mx-auto w-12 h-12 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mb-4">
-                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+                
+                <!-- Box 1: Incoming Shipments -->
+                <div class="bg-gray-50/50 p-6 rounded-2xl border border-gray-100 flex flex-col">
+                    <h3 class="text-sm font-bold text-gray-400 uppercase tracking-wider mb-5">Incoming Shipments (Packing Lists)</h3>
+                    
+                    <div class="border-2 border-dashed border-gray-200 rounded-2xl p-6 text-center bg-white hover:bg-gray-50 transition mb-4 shadow-sm">
+                        <div class="mx-auto w-10 h-10 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mb-3">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
+                        </div>
+                        <p class="font-semibold text-gray-900 mb-2 text-sm">Upload Excel File (.xls)</p>
+                        <input type="file" accept=".xls,.xlsx,.csv" @change="uploadAppleExcel" class="w-full text-xs text-gray-500 file:mr-4 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 transition cursor-pointer" />
                     </div>
-                    <p class="font-semibold text-gray-900 mb-2">Upload Excel File</p>
-                    <input type="file" accept=".xls,.xlsx,.csv" @change="uploadAppleExcel" class="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 transition cursor-pointer" />
+                    
+                    <div class="flex-grow flex flex-col justify-end">
+                        <textarea v-model="rawPDFText" rows="3" placeholder="Or paste raw PDF text here..." class="w-full p-3 border border-gray-200 rounded-xl font-mono text-xs bg-white text-gray-700 resize-none shadow-sm mb-3"></textarea>
+                        <button @click="parseAppleText" class="w-full bg-slate-900 hover:bg-black text-white font-semibold py-2.5 rounded-xl transition shadow-sm text-sm">Extract Text</button>
+                    </div>
                 </div>
-                <div class="flex flex-col justify-between">
-                    <div>
-                        <p class="font-semibold text-gray-900 mb-2">Smart Paste PDF Text</p>
-                        <textarea v-model="rawPDFText" rows="5" placeholder="Highlight and paste PDF text here..." class="w-full p-4 border border-gray-200 rounded-xl font-mono text-xs bg-gray-50 text-gray-700 resize-none"></textarea>
+
+                <!-- Box 2: Bulk Usage Upload -->
+                <div class="bg-gray-50/50 p-6 rounded-2xl border border-gray-100 flex flex-col">
+                    <h3 class="text-sm font-bold text-gray-400 uppercase tracking-wider mb-5">Daily Usage Logs</h3>
+                    <div class="border-2 border-dashed border-gray-200 rounded-2xl p-8 text-center bg-white hover:bg-gray-50 transition flex-grow flex flex-col items-center justify-center shadow-sm">
+                        <div class="mx-auto w-12 h-12 bg-green-100 text-green-600 rounded-full flex items-center justify-center mb-4">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                        </div>
+                        <p class="font-bold text-gray-900 mb-2">Upload Usage Excel</p>
+                        <p class="text-xs text-gray-500 mb-6 px-4">Columns required: <strong>Repair ID</strong>, <strong>Part Number</strong>, <strong>Serial Number</strong>, <strong>Technician ID</strong></p>
+                        <input type="file" accept=".xls,.xlsx,.csv" @change="uploadBulkUseExcel" class="w-full max-w-xs text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-green-50 file:text-green-700 hover:file:bg-green-100 transition cursor-pointer" />
                     </div>
-                    <button @click="parseAppleText" class="mt-4 w-full bg-slate-900 hover:bg-black text-white font-semibold py-3 rounded-xl transition shadow-sm">Extract Typed Data</button>
                 </div>
             </div>
 
+            <!-- Apple Packing List Preview Table -->
             <div v-if="parsedItems.length > 0" class="border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
                 <div class="bg-blue-50/50 p-4 border-b border-gray-200 flex justify-between items-center">
                     <div class="flex items-center gap-4">
@@ -210,10 +258,11 @@
                 </table>
                 <div class="p-5 bg-gray-50 text-right border-t border-gray-100">
                     <button @click="submitParsedList" :disabled="isSaving" class="bg-[#0071e3] hover:bg-[#005bb5] text-white px-8 py-2.5 rounded-full font-semibold shadow-sm transition">
-                        {{ isSaving ? 'Saving...' : 'Confirm & Save' }}
+                        {{ isSaving ? 'Saving...' : 'Confirm & Save Shipment' }}
                     </button>
                 </div>
             </div>
+            
             <div v-if="successMsg && activeTab === 'upload'" class="mt-6 flex items-center gap-3 p-4 bg-green-50 text-green-800 rounded-xl border border-green-100 font-medium">{{ successMsg }}</div>
         </div>
 
@@ -298,59 +347,45 @@
             <div v-if="successMsg && activeTab === 'receive'" class="mt-6 flex items-center gap-3 p-4 bg-green-50 text-green-800 rounded-xl border border-green-100 font-medium">{{ successMsg }}</div>
         </div>
 
-        <!-- Use Parts -->
-        <div v-show="activeTab === 'use'" class="bg-white rounded-2xl smooth-shadow border border-gray-100 p-8 max-w-5xl mx-auto no-print">
-            <h2 class="text-2xl font-bold tracking-tight text-gray-900 mb-8">Record Part Usage</h2>
+        <!-- Use Parts (Manual Entry Only) -->
+        <div v-show="activeTab === 'use'" class="bg-white rounded-2xl smooth-shadow border border-gray-100 p-8 max-w-2xl mx-auto no-print">
+            <h2 class="text-2xl font-bold tracking-tight text-gray-900 mb-8 text-center">Record Part Usage</h2>
             
-            <div class="grid grid-cols-1 lg:grid-cols-2 gap-10">
-                <div class="bg-gray-50/50 p-6 rounded-2xl border border-gray-100">
-                    <h3 class="text-sm font-bold text-gray-400 uppercase tracking-wider mb-5">Manual Entry</h3>
-                    
-                    <div v-if="!useForm.partNumber" class="mb-4">
-                        <input v-model="useSearch" @keyup.enter="findPartToUse" type="text" placeholder="Scan Barcode..." class="w-full p-4 bg-white border border-gray-200 rounded-xl font-mono text-lg outline-none focus:ring-2 focus:ring-[#0071e3] shadow-sm">
-                        <button @click="findPartToUse" class="mt-3 w-full bg-slate-900 hover:bg-black text-white px-8 py-3.5 rounded-xl font-bold transition shadow-sm">Locate Part</button>
-                        <p v-if="useSearchError" class="text-red-600 text-sm mt-3 font-medium">{{ useSearchError }}</p>
-                    </div>
-
-                    <form @submit.prevent="usePart" class="space-y-5" v-if="useForm.partNumber">
-                        <div class="p-5 bg-white border border-gray-200 rounded-xl flex justify-between items-center shadow-sm">
-                            <div>
-                                <p class="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Target Component</p>
-                                <p class="font-mono font-extrabold text-xl text-slate-900">{{ useForm.partNumber }}</p>
-                            </div>
-                            <button type="button" @click="resetUseForm" class="text-sm text-[#0071e3] font-semibold hover:underline">Change</button>
-                        </div>
-                        <div>
-                            <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Repair ID</label>
-                            <input v-model="useForm.repairId" type="text" required class="w-full p-3 bg-white border border-gray-200 rounded-xl font-semibold text-gray-900 outline-none focus:ring-2 focus:ring-[#0071e3] shadow-sm">
-                        </div>
-                        <div>
-                            <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Technician ID</label>
-                            <input v-model="useForm.technician" type="text" required class="w-full p-3 bg-white border border-gray-200 rounded-xl font-semibold text-gray-900 outline-none focus:ring-2 focus:ring-[#0071e3] shadow-sm">
-                        </div>
-                        <div>
-                            <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Assign Serial Number</label>
-                            <select v-if="availableSerials.length > 0" v-model="useForm.serialNumber" class="w-full p-3 bg-white border border-gray-200 rounded-xl font-mono text-sm text-gray-900 outline-none focus:ring-2 focus:ring-[#0071e3] cursor-pointer shadow-sm">
-                                <option value="">-- Non-Serialized --</option>
-                                <option v-for="sn in availableSerials" :key="sn" :value="sn">{{ sn }}</option>
-                            </select>
-                            <div v-else class="p-3 bg-white border border-gray-200 rounded-xl shadow-sm"><p class="text-sm text-gray-500 italic">No serialized units available. Logging as non-serialized.</p></div>
-                        </div>
-                        <button type="submit" class="w-full bg-[#0071e3] hover:bg-[#005bb5] text-white p-3.5 rounded-xl font-bold shadow-md transition text-base mt-2">Submit Log</button>
-                    </form>
+            <div class="bg-gray-50/50 p-6 rounded-2xl border border-gray-100">
+                <h3 class="text-sm font-bold text-gray-400 uppercase tracking-wider mb-5">Manual Entry</h3>
+                
+                <div v-if="!useForm.partNumber" class="mb-4">
+                    <input v-model="useSearch" @keyup.enter="findPartToUse" type="text" placeholder="Scan Barcode..." class="w-full p-4 bg-white border border-gray-200 rounded-xl font-mono text-lg outline-none focus:ring-2 focus:ring-[#0071e3] shadow-sm">
+                    <button @click="findPartToUse" class="mt-3 w-full bg-slate-900 hover:bg-black text-white px-8 py-3.5 rounded-xl font-bold transition shadow-sm">Locate Part</button>
+                    <p v-if="useSearchError" class="text-red-600 text-sm mt-3 font-medium">{{ useSearchError }}</p>
                 </div>
 
-                <div class="bg-gray-50/50 p-6 rounded-2xl border border-gray-100 flex flex-col">
-                    <h3 class="text-sm font-bold text-gray-400 uppercase tracking-wider mb-5">Bulk Upload</h3>
-                    <div class="border-2 border-dashed border-gray-200 rounded-2xl p-8 text-center bg-white hover:bg-gray-50 transition flex-grow flex flex-col items-center justify-center shadow-sm">
-                        <div class="mx-auto w-12 h-12 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mb-4">
-                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                <form @submit.prevent="usePart" class="space-y-5" v-if="useForm.partNumber">
+                    <div class="p-5 bg-white border border-gray-200 rounded-xl flex justify-between items-center shadow-sm">
+                        <div>
+                            <p class="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Target Component</p>
+                            <p class="font-mono font-extrabold text-xl text-slate-900">{{ useForm.partNumber }}</p>
                         </div>
-                        <p class="font-bold text-gray-900 mb-2">Upload Excel Template</p>
-                        <p class="text-xs text-gray-500 mb-6 px-4">Requires columns: <strong>Repair ID</strong>, <strong>Part Number</strong>, <strong>Serial Number</strong>, and <strong>Technician ID</strong>.</p>
-                        <input type="file" accept=".xls,.xlsx,.csv" @change="uploadBulkUseExcel" class="w-full max-w-xs text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 transition cursor-pointer" />
+                        <button type="button" @click="resetUseForm" class="text-sm text-[#0071e3] font-semibold hover:underline">Change</button>
                     </div>
-                </div>
+                    <div>
+                        <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Repair ID</label>
+                        <input v-model="useForm.repairId" type="text" required class="w-full p-3 bg-white border border-gray-200 rounded-xl font-semibold text-gray-900 outline-none focus:ring-2 focus:ring-[#0071e3] shadow-sm">
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Technician ID</label>
+                        <input v-model="useForm.technician" type="text" required class="w-full p-3 bg-white border border-gray-200 rounded-xl font-semibold text-gray-900 outline-none focus:ring-2 focus:ring-[#0071e3] shadow-sm">
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Assign Serial Number</label>
+                        <select v-if="availableSerials.length > 0" v-model="useForm.serialNumber" class="w-full p-3 bg-white border border-gray-200 rounded-xl font-mono text-sm text-gray-900 outline-none focus:ring-2 focus:ring-[#0071e3] cursor-pointer shadow-sm">
+                            <option value="">-- Non-Serialized --</option>
+                            <option v-for="sn in availableSerials" :key="sn" :value="sn">{{ sn }}</option>
+                        </select>
+                        <div v-else class="p-3 bg-white border border-gray-200 rounded-xl shadow-sm"><p class="text-sm text-gray-500 italic">No serialized units available. Logging as non-serialized.</p></div>
+                    </div>
+                    <button type="submit" class="w-full bg-[#0071e3] hover:bg-[#005bb5] text-white p-3.5 rounded-xl font-bold shadow-md transition text-base mt-2">Submit Log</button>
+                </form>
             </div>
             
             <div v-if="successMsg && activeTab === 'use'" class="mt-8 flex items-center gap-3 p-4 bg-green-50 text-green-800 rounded-xl border border-green-100 font-medium">{{ successMsg }}</div>
@@ -566,8 +601,9 @@ createApp({
     data() {
         return {
             showDetails: false,
+            hideFOC: false,
             activeTab: 'report', stock: [], availableSerials: [], successMsg: '', isSaving: false,
-            searchQuery: '', modelFilter: '', receiveSearch: '', expectedItems: [], searched: false,
+            searchQuery: '', categoryFilter: '', modelFilter: '', receiveSearch: '', expectedItems: [], searched: false,
             useSearch: '', useSearchError: '', useForm: { repairId: '', partNumber: '', serialNumber: '', technician: '' },
             rawPDFText: '', parsedAwb: '', parsedItems: [], awbList: [], reportType: 'receiving', 
             reportStart: '', reportEnd: '', historyList: [], usageList: [],
@@ -581,12 +617,37 @@ createApp({
         }
     },
     computed: {
+        uniqueCategories() {
+            const categories = this.stock.map(item => item.category || item.product).filter(Boolean);
+            return [...new Set(categories)].sort();
+        },
         uniqueModels() { return [...new Set(this.stock.map(s => s.model).filter(m => m))].sort(); },
         filteredStock() {
-            return this.stock.filter(item => {
+            let result = this.stock.filter(item => {
                 const matchesSearch = !this.searchQuery || (item.part_number && item.part_number.toLowerCase().includes(this.searchQuery.toLowerCase()));
                 const matchesModel = !this.modelFilter || item.model === this.modelFilter;
-                return matchesSearch && matchesModel;
+                
+                const itemCategory = item.category || item.product;
+                const matchesCategory = !this.categoryFilter || itemCategory === this.categoryFilter;
+                
+                // Identify FOC parts based on their Model or Description text
+                const isFoc = (item.description && item.description.toUpperCase().includes('FOC')) || 
+                              (item.model && item.model.toUpperCase().includes('FOC'));
+                
+                // Drop them if the hide toggle is checked
+                if (this.hideFOC && isFoc) return false;
+                
+                return matchesSearch && matchesModel && matchesCategory;
+            });
+            
+            // Sort remaining parts: force FOC parts to the absolute bottom
+            return result.sort((a, b) => {
+                const isAFoc = (a.description && a.description.toUpperCase().includes('FOC')) || (a.model && a.model.toUpperCase().includes('FOC'));
+                const isBFoc = (b.description && b.description.toUpperCase().includes('FOC')) || (b.model && b.model.toUpperCase().includes('FOC'));
+                
+                if (isAFoc && !isBFoc) return 1;
+                if (!isAFoc && isBFoc) return -1;
+                return 0; // Maintain natural order for everything else
             });
         },
         filteredReceiving() {
@@ -813,14 +874,14 @@ createApp({
                 let repairMatch = blockText.match(/(G\d{8,10})/i);
                 if (!repairMatch) repairMatch = text.match(/(G\d{8,10})/i);
                 
-                // Extract Exact Quantity
+                // EXTRACT QUANTITY: Catch 3.0 instead of forcing 1
                 let qty = 1;
                 const qtyMatch = blockText.match(/(?:,|\b)(\d+)(?:\.0+)?[,\s]+["']?SI/i);
                 if (qtyMatch) {
                     qty = parseInt(qtyMatch[1], 10);
                 }
                 
-                // 1. Get Top Half of PO (From the same line as the part)
+                // 1. Get Top Half of PO
                 let localPo = globalPo;
                 const lineStart = text.lastIndexOf('\n', match.index);
                 const prefix = text.substring(lineStart === -1 ? 0 : lineStart, match.index);
@@ -830,15 +891,14 @@ createApp({
                     localPo = tokens[tokens.length - 3];
                 }
                 
-                // 2. Get Bottom Half of PO (From the rows directly below it)
+                // 2. Get Bottom Half of PO (-IW or -OW or -Cons)
                 let contPo = "";
-                // NEW: Flexible radar that catches ANY string ending in -IW or -OW
-                const contMatch = blockText.match(/,+([A-Za-z0-9\-_]+-(?:IW|OW)),+/i);
+                const contMatch = blockText.match(/,+([A-Za-z0-9\-_]+-(?:IW|OW|Cons)),+/i);
                 if (contMatch) {
                     contPo = contMatch[1];
                 }
                 
-                // 3. Smart Stitching: Find the overlap and merge them back together!
+                // 3. Smart Stitching: Overlap and Merge
                 if (localPo && contPo && localPo !== 'N/A') {
                     let maxOverlap = 0;
                     let a = localPo.trim();
@@ -850,20 +910,23 @@ createApp({
                         }
                     }
                     if (maxOverlap > 0) {
-                        localPo = a + b.substring(maxOverlap); // Merge!
+                        localPo = a + b.substring(maxOverlap); 
                     } else {
-                        localPo = a + b; // Fallback concatenation
+                        localPo = a + b; 
                     }
                 }
                 
-                // Save the parts
+                // Push item exactly 'qty' times and AUTO-TAG FOC parts!
                 for (let i = 0; i < qty; i++) {
+                    const isConsumable = localPo && localPo.toUpperCase().includes('FOC') ? 'FOC' : 'REFILLED';
+                    
                     this.parsedItems.push({ 
                         awb: this.parsedAwb || 'UNKNOWN_AWB', 
                         poNumber: localPo, 
                         partNumber: match[1], 
                         serialNumber: snMatch ? snMatch[1] : null, 
                         repairId: repairMatch ? repairMatch[1] : null,
+                        classification: isConsumable, 
                         qty: 1 
                     });
                 }
