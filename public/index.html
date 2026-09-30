@@ -798,14 +798,25 @@ createApp({
                 const snMatch = blockText.match(/S\/N[,\s:]+([A-Z0-9]{8,15})/i);
                 let repairMatch = blockText.match(/(G\d{8,10})/i);
                 if (!repairMatch) repairMatch = text.match(/(G\d{8,10})/i);
-                this.parsedItems.push({ 
-                    awb: this.parsedAwb || 'UNKNOWN_AWB', 
-                    poNumber: globalPo,
-                    partNumber: match[1], 
-                    serialNumber: snMatch ? snMatch[1] : null, 
-                    repairId: repairMatch ? repairMatch[1] : null,
-                    qty: 1 
-                });
+                
+                // NEW: Search for Apple's quantity digit right before the Ship-To code (e.g. 3.0,,"SI0228)
+                let qty = 1;
+                const qtyMatch = blockText.match(/(?:,|\b)(\d+)(?:\.0+)?[,\s]+["']?SI/i);
+                if (qtyMatch) {
+                    qty = parseInt(qtyMatch[1], 10);
+                }
+                
+                // NEW: Push the item multiple times based on its exact quantity
+                for (let i = 0; i < qty; i++) {
+                    this.parsedItems.push({ 
+                        awb: this.parsedAwb || 'UNKNOWN_AWB', 
+                        poNumber: globalPo,
+                        partNumber: match[1], 
+                        serialNumber: snMatch ? snMatch[1] : null, 
+                        repairId: repairMatch ? repairMatch[1] : null,
+                        qty: 1 
+                    });
+                }
             });
         },
         async submitParsedList() {
