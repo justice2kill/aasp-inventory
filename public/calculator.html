@@ -709,7 +709,7 @@ lkPrt.addEventListener('change', function() {
 
 lkOpt.addEventListener('change', applyLookupPrice);
 
-function applyLookupPrice() {
+async function applyLookupPrice() {
   const selectedPrice = parseFloat(lkOpt.value);
   if (!isNaN(selectedPrice)) {
     // 1. Update Pricing UI
@@ -717,19 +717,30 @@ function applyLookupPrice() {
     autoSelectGNextCategory(lkMod.value, lkPrt.value);
     calcTab1();
 
-    // 2. Update Live Stock UI
+    // 2. Fetch True Live Stock from Database
     const partFullString = lkPrt.value; 
     const partNumberOnly = partFullString.split(" - ")[0].trim();
-    const stockQty = stockMap[partNumberOnly];
     
     const stockBadgeUI = document.getElementById("stockBadgeUI");
     const stockEl = document.getElementById("stockDisplay");
 
-    if (stockQty !== undefined && stockQty !== null && stockQty !== "") {
-      const qtyInt = parseInt(stockQty);
+    // Show loading state while fetching from the database
+    stockEl.innerText = "Checking...";
+    stockEl.style.color = "#8e8e93";
+    stockBadgeUI.style.background = "#f2f2f7";
+    stockBadgeUI.style.borderColor = "#e5e5ea";
+
+    try {
+      // Query the live stock backend directly for this exact part
+      const response = await fetch('/api/stock');
+      const results = await response.json();
+      
+      const dbPart = results.find(r => r.part_number === partNumberOnly);
+      const stockQty = dbPart ? dbPart.available_stock : 0;
+      
       stockEl.innerText = stockQty + " Units";
       
-      if (qtyInt > 0) {
+      if (stockQty > 0) {
         // Green for In-Stock
         stockBadgeUI.style.background = "#e8f5e9";
         stockBadgeUI.style.borderColor = "#c8e6c9";
@@ -741,12 +752,12 @@ function applyLookupPrice() {
         stockEl.style.color = "#c62828";
         stockEl.innerText = "Out of Stock";
       }
-    } else {
-      // Orange for Not Found in Sheet
+    } catch (err) {
+      // Orange for Database Connection Error
       stockBadgeUI.style.background = "#fff3e0";
       stockBadgeUI.style.borderColor = "#ffe0b2";
       stockEl.style.color = "#ef6c00";
-      stockEl.innerText = "Unknown";
+      stockEl.innerText = "Error";
     }
   }
 }
