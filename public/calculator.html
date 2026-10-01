@@ -440,34 +440,125 @@ function getDeviceFamily(name) {
 function getPartCategory(desc) {
   if (!desc) return "Other / Miscellaneous";
   const d = desc.toLowerCase();
+  
   if (d.includes("display") || d.includes("screen") || d.includes("lcm")) return "Display";
   if (d.includes("logic board") || d.includes("mlb")) return "Logic Board";
   if (d.includes("top case") || d.includes("keyboard")) return "Top Case / Keyboard";
-  if (d.includes("back glass") || d.includes("rear") || d.includes("enclosure")) return "Back Glass / Rear System";
+  
+  // Enclosure gets its own category now!
+  if (d.includes("enclosure")) return "Enclosure";
+  
+  // Rear parts stay here
+  if (d.includes("back glass") || d.includes("rear")) return "Back Glass / Rear System";
+  
   if (d.includes("battery")) return "Battery";
   if (d.includes("camera")) return "Camera";
   if (d.includes("screw") || d.includes("bracket")) return "Screws & Hardware";
   if (d.includes("band") || d.includes("loop")) return "Watch Bands";
   if (d.includes("cable") || d.includes("adapter") || d.includes("power")) return "Cables & Power";
+  
+  return "Other / Miscellaneous";
+}
+
+function getPartCategory(desc) {
+  if (!desc) return "Other / Miscellaneous";
+  const d = desc.toLowerCase();
+  
+  // 1. Explicitly catch Logic Boards first so they don't get mixed up
+  if (d.includes("logic board") || d.includes("mlb")) return "Logic Board";
+  
+  // 2. Catch WUR Parts based on Apple's naming structure (Color, Capacity, Model, ROW/CI-AR)
+  // WUR parts usually contain "row" and a color/capacity, but NEVER say "logic board" or "display"
+  if ((d.includes("row") || d.includes("ci/ar")) && 
+      !d.includes("display") && 
+      !d.includes("camera") && 
+      !d.includes("battery") && 
+      !d.includes("rear") && 
+      !d.includes("mid") &&
+      !d.includes("enclosure")) {
+        return "WUR";
+  }
+
+  // 3. Continue with the rest of the categories
+  if (d.includes("display") || d.includes("screen") || d.includes("lcm")) return "Display";
+  if (d.includes("top case") || d.includes("keyboard")) return "Top Case / Keyboard";
+  if (d.includes("back glass")) return "Back Glass";
+  if (d.includes("enclosure") || d.includes("rear") || d.includes("mid")) return "Enclosures (Mid/Rear System)";
+  if (d.includes("battery")) return "Battery";
+  if (d.includes("camera")) return "Camera";
+  if (d.includes("screw") || d.includes("bracket")) return "Screws & Hardware";
+  if (d.includes("band") || d.includes("loop")) return "Watch Bands";
+  if (d.includes("cable") || d.includes("adapter") || d.includes("power")) return "Cables & Power";
+  
+  return "Other / Miscellaneous";
+}
+
+function getPartCategory(desc) {
+  if (!desc) return "Other / Miscellaneous";
+  const d = desc.toLowerCase();
+  
+  // 1. Catch WUR Parts
+  if ((d.includes("row") || d.includes("ci/ar")) && 
+      !d.includes("display") && 
+      !d.includes("camera") && 
+      !d.includes("battery") && 
+      !d.includes("rear syst") && 
+      !d.includes("mid syst") &&
+      !d.includes("logic board") && 
+      !d.includes("enclosure")) {
+        return "WUR";
+  }
+
+  // 2. Separate Enclosures from Mid/Rear Systems
+  if (d.includes("enclosure")) return "Enclosure";
+  
+  // 3. Catch Mid/Rear Systems (Using "syst" to catch Apple's cut-off text!)
+  if (d.includes("rear syst") || d.includes("mid syst")) return "Mid/Rear System";
+
+  // 4. Catch Actual Logic Boards (Since Mid Systems are caught above, only true Logic Boards get here)
+  if (d.includes("logic board") || d.includes("mlb")) return "Logic Board";
+  
+  // 5. Rest of the categories
+  if (d.includes("display") || d.includes("screen") || d.includes("lcm")) return "Display";
+  if (d.includes("top case") || d.includes("keyboard")) return "Top Case / Keyboard";
+  if (d.includes("back glass")) return "Back Glass";
+  if (d.includes("battery")) return "Battery";
+  if (d.includes("camera")) return "Camera";
+  if (d.includes("screw") || d.includes("bracket")) return "Screws & Hardware";
+  if (d.includes("band") || d.includes("loop")) return "Watch Bands";
+  if (d.includes("cable") || d.includes("adapter") || d.includes("power")) return "Cables & Power";
+  
   return "Other / Miscellaneous";
 }
 
 function autoSelectGNextCategory(modelName, partDesc) {
   const m = (modelName || "").toLowerCase();
   const d = (partDesc || "").toLowerCase();
-  let targetIdx = 8; 
+  
+  let targetIdx = 8; // Default to "OTHER & Accessories" (Index 8)
 
-  if (m.includes("mac") || m.includes("imac")) targetIdx = 7;
-  else if (d.includes("battery")) targetIdx = 4;
-  else if (d.includes("back glass")) targetIdx = 9;
-  else if (d.includes("display") || d.includes("screen") || d.includes("lcm")) {
+  if (m.includes("mac") || m.includes("imac")) {
+    targetIdx = 7;
+  } else if (d.includes("battery")) {
+    targetIdx = 4;
+  } else if (d.includes("back glass")) {
+    targetIdx = 9;
+  } else if (d.includes("display") || d.includes("screen") || d.includes("lcm")) {
     if (m.includes("17")) targetIdx = 3;
     else if (m.includes("14") || m.includes("15") || m.includes("16")) targetIdx = 2;
     else if (m.includes("13")) targetIdx = 1;
     else if (m.includes("11") || m.includes("12")) targetIdx = 0;
     else targetIdx = 2;
-  } else if (d.includes("rear") || d.includes("mid") || d.includes("enclosure")) targetIdx = 5;
-  else if (d.includes("wur")) targetIdx = 6;
+  } else if (d.includes("rear syst") || d.includes("mid syst")) {
+    // Correctly routes Mid/Rear Systems to Formula #5
+    targetIdx = 5;
+  } else if (d.includes("enclosure")) {
+    // Correctly routes Mac Enclosures solely to "OTHER & Accessories" (Formula #8)
+    targetIdx = 8;
+  } else if (d.includes("wur") || (d.includes("row") && !d.includes("logic board") && !d.includes("rear syst") && !d.includes("mid syst") && !d.includes("display"))) {
+    targetIdx = 6;
+  }
+  
   catSel.value = targetIdx;
 }
 
