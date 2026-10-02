@@ -613,7 +613,7 @@ function fetchCSVFromServer() {
   dataMap = {};
 
   // Cache bust the Apple CSV file to always pull fresh from the server when forced
-  const dbUrl = "data.csv?t=" + new Date().getTime();
+  const dbUrl = "https://github.com/justice2kill/aasp-inventory/releases/download/v.1.0.0/data.csv" + new Date().getTime();
 
   Papa.parse(dbUrl, {
     download: true,
