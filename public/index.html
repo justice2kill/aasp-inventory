@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AASP Cloud Inventory</title>
+    <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
@@ -39,7 +40,10 @@
                 <button @click="activeTab = 'awb'" :class="activeTab === 'awb' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'" class="px-5 py-1.5 rounded-full text-sm font-semibold transition-all">Tracker</button>
                 <button @click="activeTab = 'receive'" :class="activeTab === 'receive' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'" class="px-5 py-1.5 rounded-full text-sm font-semibold transition-all">Receive</button>
                 <button @click="activeTab = 'use'" :class="activeTab === 'use' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'" class="px-5 py-1.5 rounded-full text-sm font-semibold transition-all">Use</button>
+                <button @click="activeTab = 'returns'" :class="activeTab === 'returns' ? 'bg-amber-500 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'" class="px-5 py-1.5 rounded-full text-sm font-semibold transition-all">Returns (RMA)</button>
                 <button @click="activeTab = 'reports'" :class="activeTab === 'reports' ? 'bg-slate-900 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'" class="px-5 py-1.5 rounded-full text-sm font-semibold transition-all">Reports</button>
+                <button @click="activeTab = 'dashboard'" :class="activeTab === 'dashboard' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'" class="px-5 py-1.5 rounded-full text-sm font-semibold transition-all">Dashboard</button>
+                
                 <div class="w-px h-5 bg-gray-300 mx-1"></div>
                 <button @click="activeTab = 'calculator'" :class="activeTab === 'calculator' ? 'bg-amber-700 text-white shadow-sm' : 'text-amber-700 hover:bg-amber-100'" class="px-4 py-1.5 rounded-full text-sm font-bold transition-all flex items-center gap-1.5">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
@@ -51,12 +55,71 @@
 
     <main class="flex-grow max-w-[90rem] mx-auto w-full p-6 pt-8">
         
+        <!-- DASHBOARD TAB -->
+        <div v-show="activeTab === 'dashboard'" class="bg-white rounded-2xl smooth-shadow border border-gray-100 p-8 max-w-[90rem] mx-auto no-print">
+            <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4 border-b border-gray-100 pb-6">
+                <div>
+                    <h2 class="text-2xl font-bold tracking-tight text-gray-900">Inventory Analytics</h2>
+                    <p class="text-sm text-gray-500 mt-1">Select an analytics view to visualize your data.</p>
+                </div>
+                
+                <div class="flex flex-wrap items-center gap-3">
+                    <div v-if="dashboardMode === 'usage'" class="flex items-center gap-3 bg-gray-50 p-2 rounded-xl border border-gray-200">
+                        <select v-model="dashTechFilter" class="p-1.5 bg-transparent border-none text-sm font-semibold text-gray-700 outline-none cursor-pointer border-r border-gray-200">
+                            <option value="">All Technicians</option>
+                            <option v-for="tech in uniqueTechnicians" :key="tech" :value="tech">{{ tech }}</option>
+                        </select>
+                        <div class="flex items-center gap-2 px-2"><label class="text-[10px] font-bold text-gray-500 uppercase">From</label><input v-model="dashStart" type="date" class="p-1 bg-transparent border-none text-sm font-medium outline-none"></div>
+                        <div class="w-px h-6 bg-gray-300"></div>
+                        <div class="flex items-center gap-2 px-2"><label class="text-[10px] font-bold text-gray-500 uppercase">To</label><input v-model="dashEnd" type="date" class="p-1 bg-transparent border-none text-sm font-medium outline-none"></div>
+                    </div>
+
+                    <select v-model="dashboardMode" class="bg-white border border-gray-200 text-gray-800 font-bold py-2.5 px-5 rounded-lg focus:ring-2 focus:ring-[#0071e3] focus:outline-none text-sm shadow-sm cursor-pointer">
+                        <option value="stock">Stock Analytics</option>
+                        <option value="usage">Usage & Repairs</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 min-h-[450px]">
+                <div class="bg-gray-50/50 rounded-2xl border border-gray-200 p-6 shadow-sm flex flex-col">
+                    <h3 class="text-lg font-bold text-gray-900 mb-1">{{ dashboardMode === 'stock' ? 'Live Stock by Category' : 'Repairs by Device Family' }}</h3>
+                    <p class="text-xs text-gray-500 mb-6">Click a slice on the chart to view the detailed model breakdown.</p>
+                    
+                    <div v-show="dashboardMode === 'stock'" id="stockMainChart" class="w-full h-[380px] flex justify-center"></div>
+                    <div v-show="dashboardMode === 'usage'" id="usageMainChart" class="w-full h-[380px] flex justify-center">
+                        <span v-if="filteredDashUsage.length === 0" class="text-gray-400 font-medium text-sm mt-10">No usage data for this period.</span>
+                    </div>
+                </div>
+
+                <div class="bg-gray-50/50 rounded-2xl border border-gray-200 p-6 shadow-sm flex flex-col">
+                    <div class="flex justify-between items-start mb-6">
+                        <div>
+                            <h3 class="text-lg font-bold text-gray-900 mb-1">Top 15 Models Breakdown</h3>
+                            <p v-if="dashboardMode === 'stock'" class="text-xs text-gray-500">
+                                Viewing physical stock for <span class="font-bold text-[#0071e3]">{{ selectedStockCategory || 'All Categories' }}</span>
+                            </p>
+                            <p v-if="dashboardMode === 'usage'" class="text-xs text-gray-500">
+                                Viewing parts consumed for <span class="font-bold text-green-600">{{ selectedUsageFamily || 'All Devices' }}</span>
+                            </p>
+                        </div>
+                        <button v-if="dashboardMode === 'stock' && selectedStockCategory" @click="selectedStockCategory = null; renderStockDrilldown()" class="text-xs font-bold text-gray-600 hover:text-gray-900 bg-white border border-gray-200 px-3 py-1.5 rounded-lg shadow-sm transition">Clear Filter</button>
+                        <button v-if="dashboardMode === 'usage' && selectedUsageFamily" @click="selectedUsageFamily = null; renderUsageDrilldown()" class="text-xs font-bold text-gray-600 hover:text-gray-900 bg-white border border-gray-200 px-3 py-1.5 rounded-lg shadow-sm transition">Clear Filter</button>
+                    </div>
+                    
+                    <div v-show="dashboardMode === 'stock'" id="stockDrillChart" class="w-full h-[380px] flex justify-center items-center"></div>
+                    <div v-show="dashboardMode === 'usage'" id="usageDrillChart" class="w-full h-[380px] flex justify-center items-center">
+                        <span v-if="filteredDashUsage.length === 0" class="text-gray-400 font-medium text-sm mt-10">No usage data for this period.</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Stock Report -->
         <div v-show="activeTab === 'report'" class="bg-white rounded-2xl smooth-shadow border border-gray-100 p-8">
             <h2 class="text-2xl font-bold tracking-tight text-gray-900 mb-6 no-print">Live Stock Balance</h2>
             
             <div class="flex flex-col xl:flex-row justify-between items-center bg-white p-3 rounded-xl shadow-sm border border-gray-100 mb-6 gap-4 no-print">
-                <!-- Left Side: Search, Category & Model Filters -->
                 <div class="flex flex-wrap w-full xl:w-auto gap-3">
                     <select v-model="categoryFilter" class="bg-gray-50 border border-gray-200 text-gray-700 py-2.5 px-4 rounded-lg focus:ring-2 focus:ring-[#0071e3] focus:outline-none text-sm font-medium transition min-w-[140px]">
                         <option value="">All Categories</option>
@@ -71,10 +134,7 @@
                     <input type="text" v-model="searchQuery" placeholder="Search Part Number..." class="w-full xl:w-64 bg-gray-50 border border-gray-200 text-gray-700 py-2.5 px-4 rounded-lg focus:ring-2 focus:ring-[#0071e3] focus:outline-none text-sm transition">
                 </div>
 
-                <!-- Right Side: Toggles & Icon Actions -->
                 <div class="flex items-center gap-3 w-full xl:w-auto justify-between xl:justify-end">
-                    
-                    <!-- Sleek View Toggles -->
                     <div class="flex bg-gray-100 p-1 rounded-lg">
                         <label class="flex items-center text-sm font-medium px-4 py-1.5 rounded-md cursor-pointer transition-colors" :class="showDetails ? 'bg-white shadow-sm text-[#0071e3]' : 'text-gray-500 hover:text-gray-700'">
                             <input type="checkbox" v-model="showDetails" class="hidden">
@@ -85,10 +145,7 @@
                             Hide FOC
                         </label>
                     </div>
-
-                    <div class="w-px h-6 bg-gray-300 mx-2 hidden md:block"></div> <!-- Vertical Divider -->
-
-                    <!-- Action Icons -->
+                    <div class="w-px h-6 bg-gray-300 mx-2 hidden md:block"></div>
                     <div class="flex gap-1">
                         <button @click="fetchStock" title="Refresh" class="p-2 text-gray-500 hover:text-[#0071e3] hover:bg-blue-50 rounded-lg transition">
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
@@ -197,8 +254,6 @@
             <p class="text-sm text-gray-500 mb-8">Centralized bulk operations for incoming shipments and daily usage logs.</p>
             
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-                
-                <!-- Box 1: Incoming Shipments -->
                 <div class="bg-gray-50/50 p-6 rounded-2xl border border-gray-100 flex flex-col">
                     <h3 class="text-sm font-bold text-gray-400 uppercase tracking-wider mb-5">Incoming Shipments (Packing Lists)</h3>
                     
@@ -216,21 +271,19 @@
                     </div>
                 </div>
 
-                <!-- Box 2: Bulk Usage Upload -->
                 <div class="bg-gray-50/50 p-6 rounded-2xl border border-gray-100 flex flex-col">
-                    <h3 class="text-sm font-bold text-gray-400 uppercase tracking-wider mb-5">Daily Usage Logs</h3>
+                    <h3 class="text-sm font-bold text-gray-400 uppercase tracking-wider mb-5">Daily Usage Logs (CSO Sheet Compatible)</h3>
                     <div class="border-2 border-dashed border-gray-200 rounded-2xl p-8 text-center bg-white hover:bg-gray-50 transition flex-grow flex flex-col items-center justify-center shadow-sm">
                         <div class="mx-auto w-12 h-12 bg-green-100 text-green-600 rounded-full flex items-center justify-center mb-4">
                             <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
                         </div>
-                        <p class="font-bold text-gray-900 mb-2">Upload Usage Excel</p>
-                        <p class="text-xs text-gray-500 mb-6 px-4">Columns required: <strong>Repair ID</strong>, <strong>Part Number</strong>, <strong>Serial Number</strong>, <strong>Technician ID</strong></p>
+                        <p class="font-bold text-gray-900 mb-2">Upload CSO Usage Excel</p>
+                        <p class="text-xs text-gray-500 mb-6 px-4">Supports <strong>Repair ID</strong>, <strong>Parts Number</strong>, <strong>Device's Serial Number</strong>, <strong>Repair in Progress</strong> (Stock/No Stock), and <strong>Technician Name</strong>.</p>
                         <input type="file" accept=".xls,.xlsx,.csv" @change="uploadBulkUseExcel" class="w-full max-w-xs text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-green-50 file:text-green-700 hover:file:bg-green-100 transition cursor-pointer" />
                     </div>
                 </div>
             </div>
 
-            <!-- Apple Packing List Preview Table -->
             <div v-if="parsedItems.length > 0" class="border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
                 <div class="bg-blue-50/50 p-4 border-b border-gray-200 flex justify-between items-center">
                     <div class="flex items-center gap-4">
@@ -262,7 +315,6 @@
                     </button>
                 </div>
             </div>
-            
             <div v-if="successMsg && activeTab === 'upload'" class="mt-6 flex items-center gap-3 p-4 bg-green-50 text-green-800 rounded-xl border border-green-100 font-medium">{{ successMsg }}</div>
         </div>
 
@@ -347,7 +399,7 @@
             <div v-if="successMsg && activeTab === 'receive'" class="mt-6 flex items-center gap-3 p-4 bg-green-50 text-green-800 rounded-xl border border-green-100 font-medium">{{ successMsg }}</div>
         </div>
 
-        <!-- Use Parts (Manual Entry Only) -->
+        <!-- Use Parts -->
         <div v-show="activeTab === 'use'" class="bg-white rounded-2xl smooth-shadow border border-gray-100 p-8 max-w-2xl mx-auto no-print">
             <h2 class="text-2xl font-bold tracking-tight text-gray-900 mb-8 text-center">Record Part Usage</h2>
             
@@ -391,7 +443,94 @@
             <div v-if="successMsg && activeTab === 'use'" class="mt-8 flex items-center gap-3 p-4 bg-green-50 text-green-800 rounded-xl border border-green-100 font-medium">{{ successMsg }}</div>
         </div>
 
-        <!-- Combined Reports -->
+        <!-- KBB RETURNS (RMA) TAB -->
+        <div v-show="activeTab === 'returns'" class="bg-white rounded-2xl smooth-shadow border border-gray-100 p-8 max-w-[90rem] mx-auto no-print">
+            <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4 border-b border-gray-100 pb-6">
+                <div>
+                    <h2 class="text-2xl font-bold tracking-tight text-gray-900">KBB Returns Management (RMA)</h2>
+                    <p class="text-sm text-gray-500 mt-1">Track defective parts returning to Apple across both Stock and Customer orders.</p>
+                </div>
+                <div class="flex items-center gap-3">
+                    <input type="text" v-model="kbbSearch" placeholder="Search Repair ID or Part..." class="bg-gray-50 border border-gray-200 text-gray-700 py-2.5 px-4 rounded-xl focus:ring-2 focus:ring-[#0071e3] focus:outline-none text-sm font-medium w-64 shadow-sm">
+                    <button @click="fetchKBBs" class="bg-white border border-gray-200 px-4 py-2.5 rounded-xl text-sm hover:bg-gray-50 font-bold shadow-sm text-gray-700 transition">Refresh</button>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <!-- PENDING RETURNS -->
+                <div class="bg-amber-50/40 rounded-2xl border border-amber-200/60 p-6 shadow-sm flex flex-col">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-lg font-bold text-amber-900 flex items-center gap-2">
+                            <span class="w-3 h-3 rounded-full bg-amber-500"></span> Pending Apple Return Queue
+                        </h3>
+                        <span class="text-xs font-bold bg-amber-100 text-amber-800 px-3 py-1 rounded-full border border-amber-200">{{ filteredPendingKBBs.length }} items</span>
+                    </div>
+
+                    <div class="space-y-4 max-h-[650px] overflow-y-auto pr-2 custom-scrollbar flex-grow">
+                        <div v-for="kbb in filteredPendingKBBs" :key="kbb.id" class="bg-white border border-amber-200/80 p-5 rounded-xl shadow-sm hover:shadow transition">
+                            <div class="flex justify-between items-start mb-2">
+                                <div>
+                                    <span class="font-bold text-gray-900 text-base">{{ kbb.repair_id }}</span>
+                                    <span class="font-mono text-xs font-bold text-[#0071e3] ml-2 block sm:inline">{{ kbb.part_number }}</span>
+                                </div>
+                                <span class="text-[10px] bg-gray-100 text-gray-600 px-2 py-1 rounded font-bold uppercase">{{ kbb.technician }}</span>
+                            </div>
+                            
+                            <p class="text-xs text-gray-500 mb-3 leading-tight">{{ kbb.description || 'No description available' }}</p>
+                            
+                            <div class="text-xs text-gray-500 font-mono bg-gray-50 p-2.5 rounded-lg border border-gray-200 mb-4 flex flex-wrap justify-between items-center gap-3">
+                                <span>Device S/N: <strong class="text-gray-900 font-semibold">{{ kbb.device_serial }}</strong></span>
+                                <span v-if="kbb.good_serial">KGB S/N: <strong class="text-blue-600 font-bold">{{ kbb.good_serial }}</strong></span>
+                                <span v-if="kbb.kbb_serial">KBB S/N: <strong class="text-amber-700 font-bold">{{ kbb.kbb_serial }}</strong></span>
+                            </div>
+
+                            <!-- Actions Box -->
+                            <div class="flex flex-col gap-2 pt-3 border-t border-gray-100">
+                               
+                                <div class="flex justify-end mt-1">
+                                    <button @click="closeKbbReturn(kbb)" class="text-[11px] font-bold text-red-600 hover:text-red-800 hover:underline">Mark Non-Returnable / Beyond Repair &rarr;</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div v-if="filteredPendingKBBs.length === 0" class="text-center text-gray-400 font-medium py-12">No pending KBB returns found.</div>
+                    </div>
+                </div>
+
+                <!-- COMPLETED ARCHIVE (SHIPPED & CLOSED) -->
+                <div class="bg-gray-50/50 rounded-2xl border border-gray-200 p-6 shadow-sm flex flex-col">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-lg font-bold text-gray-900 flex items-center gap-2">
+                            <span class="w-3 h-3 rounded-full bg-green-500"></span> Resolved / Shipped Archive
+                        </h3>
+                        <span class="text-xs font-bold bg-gray-200 text-gray-700 px-3 py-1 rounded-full">{{ filteredResolvedKBBs.length }} items</span>
+                    </div>
+
+                    <div class="space-y-3 max-h-[650px] overflow-y-auto pr-2 custom-scrollbar flex-grow">
+                        <div v-for="kbb in filteredResolvedKBBs" :key="kbb.id" class="bg-white border border-gray-200 p-4 rounded-xl shadow-sm">
+                            <div class="flex justify-between items-start mb-2">
+                                <div>
+                                    <span class="font-bold text-gray-900 text-sm">{{ kbb.repair_id }}</span>
+                                    <span class="font-mono text-xs text-gray-600 ml-2">{{ kbb.part_number }}</span>
+                                </div>
+                                <span v-if="kbb.status === 'SHIPPED'" class="text-[10px] bg-green-100 text-green-800 border border-green-200 px-2 py-0.5 rounded font-bold uppercase">Shipped</span>
+                                <span v-else class="text-[10px] bg-gray-100 text-gray-600 border border-gray-200 px-2 py-0.5 rounded font-bold uppercase">Closed</span>
+                            </div>
+                            
+                            <div class="flex justify-between items-end text-xs text-gray-500 mt-2">
+                                <div>
+                                    <p v-if="kbb.return_awb" class="font-mono">Waybill: <strong class="text-green-700 font-bold">{{ kbb.return_awb }}</strong></p>
+                                    <p v-if="kbb.remark" class="italic text-gray-600">{{ kbb.remark }}</p>
+                                </div>
+                                <span class="text-[10px] text-gray-400 font-medium">{{ kbb.resolved_at ? new Date(kbb.resolved_at).toLocaleDateString() : '' }}</span>
+                            </div>
+                        </div>
+                        <div v-if="filteredResolvedKBBs.length === 0" class="text-center text-gray-400 font-medium py-12">No resolved KBB returns yet.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Audit Reports Tab -->
         <div v-show="activeTab === 'reports'" class="bg-white rounded-2xl smooth-shadow border border-gray-100 p-8">
             <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-8 gap-6 no-print border-b border-gray-100 pb-6">
                 <div class="flex items-center space-x-4">
@@ -451,6 +590,7 @@
                             <th class="p-4 font-semibold">Date Used</th>
                             <th class="p-4 font-semibold">Repair ID</th>
                             <th class="p-4 font-semibold">Part Details</th>
+                            <th class="p-4 font-semibold">Source Type</th>
                             <th class="p-4 font-semibold">Serial Number</th>
                             <th class="p-4 font-semibold">Technician</th>
                         </tr>
@@ -460,6 +600,11 @@
                             <td class="p-4 font-medium">{{ new Date(item.used_at).toLocaleDateString() }}</td>
                             <td class="p-4 font-bold text-gray-900">{{ item.repair_id }}</td>
                             <td class="p-4"><span class="font-mono font-bold text-gray-900 block">{{ item.part_number }}</span><span class="text-gray-500 text-xs mt-0.5 block">{{ item.description }}</span></td>
+                            <td class="p-4">
+                                <span :class="item.is_stock_deduction ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-700'" class="px-2.5 py-1 rounded text-xs font-bold">
+                                    {{ item.is_stock_deduction ? 'Inventory Stock' : 'Customer Specific' }}
+                                </span>
+                            </td>
                             <td class="p-4 font-mono text-blue-600 font-medium">{{ item.serial_number || 'N/A' }}</td>
                             <td class="p-4 font-semibold text-gray-600">{{ item.technician }}</td>
                         </tr>
@@ -467,6 +612,7 @@
                 </table>
             </div>
         </div>
+
         <!-- Seamless Calculator Tab -->
         <div v-show="activeTab === 'calculator'" class="w-full h-[calc(100vh-8rem)] rounded-2xl smooth-shadow border border-gray-200 overflow-hidden no-print bg-[#f2f2f7]">
             <iframe src="/calculator.html" class="w-full h-full border-0"></iframe>
@@ -568,7 +714,6 @@
         </div>
     </div>
 
-    <!-- Modal 4: Edit Part -->
     <div v-if="showEditModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/40 backdrop-blur-sm transition-opacity">
         <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden transform transition-all">
             <div class="p-6 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
@@ -609,52 +754,55 @@ createApp({
             activeTab: 'report', stock: [], availableSerials: [], successMsg: '', isSaving: false,
             searchQuery: '', categoryFilter: '', modelFilter: '', receiveSearch: '', expectedItems: [], searched: false,
             useSearch: '', useSearchError: '', useForm: { repairId: '', partNumber: '', serialNumber: '', technician: '' },
-            rawPDFText: '', parsedAwb: '', parsedItems: [], awbList: [], reportType: 'receiving', 
+            rawPDFText: '', parsedAwb: '', parsedItems: [], awbList: [], 
+            
+            // Dashboard & Analytics
+            dashboardMode: 'stock', 
+            dashStart: '', dashEnd: '', dashTechFilter: '',
+            selectedStockCategory: null,
+            selectedUsageFamily: null,
+
+            // KBB Returns (RMA)
+            kbbList: [],
+            kbbSearch: '',
+
+            // Reports Tab
+            reportType: 'receiving', 
             reportStart: '', reportEnd: '', historyList: [], usageList: [],
+            technicianFilter: '', 
+
+            // Modals
             showReserveModal: false, showViewModal: false, viewModalPart: '',
             activeReservations: [], reserveForm: { partNumber: '', customerName: '', deviceSn: '' },
             showManualModal: false, manualForm: { partNumber: '', serialNumber: '', classification: 'CUSTOMER_SPECIFIC', remark: '' },
-            
             showEditModal: false, editForm: { partNumber: '', model: '', description: '' },
-            
             expandedRow: null, expandedSerials: [], newSerialsInput: {} 
         }
     },
     computed: {
         uniqueCategories() {
-            // Collect categories/products from stock items, ignoring empty or 'Unknown' ones
-            const categories = this.stock
-                .map(item => item.category || item.product || item.classification)
-                .filter(c => c && c !== 'Unknown' && c !== 'N/A');
+            const categories = this.stock.map(item => item.category || item.product || item.classification).filter(c => c && c !== 'Unknown' && c !== 'N/A');
             return [...new Set(categories)].sort();
         },
         uniqueModels() { return [...new Set(this.stock.map(s => s.model).filter(m => m))].sort(); },
+        uniqueTechnicians() { return [...new Set(this.usageList.map(u => u.technician).filter(t => t))].sort(); },
+        
         filteredStock() {
             let result = this.stock.filter(item => {
                 const matchesSearch = !this.searchQuery || (item.part_number && item.part_number.toLowerCase().includes(this.searchQuery.toLowerCase()));
                 const matchesModel = !this.modelFilter || item.model === this.modelFilter;
-                
                 const itemCategory = item.category || item.product;
                 const matchesCategory = !this.categoryFilter || itemCategory === this.categoryFilter;
-                
-                // Identify FOC parts based on their Model or Description text
-                const isFoc = (item.description && item.description.toUpperCase().includes('FOC')) || 
-                              (item.model && item.model.toUpperCase().includes('FOC'));
-                
-                // Drop them if the hide toggle is checked
+                const isFoc = (item.description && item.description.toUpperCase().includes('FOC')) || (item.model && item.model.toUpperCase().includes('FOC'));
                 if (this.hideFOC && isFoc) return false;
-                
                 return matchesSearch && matchesModel && matchesCategory;
             });
-            
-            // Sort remaining parts: force FOC parts to the absolute bottom
             return result.sort((a, b) => {
                 const isAFoc = (a.description && a.description.toUpperCase().includes('FOC')) || (a.model && a.model.toUpperCase().includes('FOC'));
                 const isBFoc = (b.description && b.description.toUpperCase().includes('FOC')) || (b.model && b.model.toUpperCase().includes('FOC'));
-                
                 if (isAFoc && !isBFoc) return 1;
                 if (!isAFoc && isBFoc) return -1;
-                return 0; // Maintain natural order for everything else
+                return 0;
             });
         },
         filteredReceiving() {
@@ -668,22 +816,88 @@ createApp({
         },
         filteredUsage() {
             return this.usageList.filter(item => {
+                const matchesTech = !this.technicianFilter || item.technician === this.technicianFilter;
+                if (!matchesTech) return false;
                 if (!this.reportStart && !this.reportEnd) return true;
                 const itemDate = new Date(item.used_at).setHours(0,0,0,0);
                 const start = this.reportStart ? new Date(this.reportStart).setHours(0,0,0,0) : -Infinity;
                 const end = this.reportEnd ? new Date(this.reportEnd).setHours(23,59,59,999) : Infinity;
                 return itemDate >= start && itemDate <= end;
             });
+        },
+        filteredDashUsage() {
+            return this.usageList.filter(item => {
+                const matchesTech = !this.dashTechFilter || item.technician === this.dashTechFilter;
+                if (!matchesTech) return false;
+                if (!this.dashStart && !this.dashEnd) return true;
+                const itemDate = new Date(item.used_at).setHours(0,0,0,0);
+                const start = this.dashStart ? new Date(this.dashStart).setHours(0,0,0,0) : -Infinity;
+                const end = this.dashEnd ? new Date(this.dashEnd).setHours(23,59,59,999) : Infinity;
+                return itemDate >= start && itemDate <= end;
+            });
+        },
+        filteredPendingKBBs() {
+            return this.kbbList.filter(k => {
+                if (k.status !== 'PENDING') return false;
+                if (!this.kbbSearch) return true;
+                const q = this.kbbSearch.toLowerCase();
+                return (k.repair_id && k.repair_id.toLowerCase().includes(q)) || 
+                       (k.part_number && k.part_number.toLowerCase().includes(q)) ||
+                       (k.device_serial && k.device_serial.toLowerCase().includes(q));
+            });
+        },
+        filteredResolvedKBBs() {
+            return this.kbbList.filter(k => {
+                if (k.status === 'PENDING') return false;
+                if (!this.kbbSearch) return true;
+                const q = this.kbbSearch.toLowerCase();
+                return (k.repair_id && k.repair_id.toLowerCase().includes(q)) || 
+                       (k.part_number && k.part_number.toLowerCase().includes(q)) ||
+                       (k.return_awb && k.return_awb.toLowerCase().includes(q));
+            });
         }
     },
     watch: {
         activeTab(newTab) {
-            if (newTab === 'reports') {
+            if (newTab === 'dashboard') {
+                this.fetchDataForReports().then(() => {
+                    this.$nextTick(() => {
+                        if (this.dashboardMode === 'stock') {
+                            this.renderStockChart();
+                            this.renderStockDrilldown(this.selectedStockCategory);
+                        } else {
+                            this.renderUsageChart();
+                            this.renderUsageDrilldown(this.selectedUsageFamily);
+                        }
+                    });
+                });
+            } else if (newTab === 'reports') {
                 this.fetchDataForReports();
+            } else if (newTab === 'returns') {
+                this.fetchKBBs();
             } else if (newTab === 'report') {
                 this.fetchStock();
             } else if (newTab === 'awb') {
                 this.fetchAWBs();
+            }
+        },
+        dashboardMode(newMode) {
+            this.$nextTick(() => {
+                if (newMode === 'stock') {
+                    this.renderStockChart();
+                    this.renderStockDrilldown(this.selectedStockCategory);
+                } else {
+                    this.renderUsageChart();
+                    this.renderUsageDrilldown(this.selectedUsageFamily);
+                }
+            });
+        },
+        filteredDashUsage() {
+            if (this.activeTab === 'dashboard' && this.dashboardMode === 'usage') {
+                this.$nextTick(() => {
+                    this.renderUsageChart();
+                    this.renderUsageDrilldown(this.selectedUsageFamily);
+                });
             }
         }
     },
@@ -699,6 +913,195 @@ createApp({
             XLSX.utils.book_append_sheet(workbook, worksheet, "Report Data");
             XLSX.writeFile(workbook, filename + ".xlsx");
         },
+
+        // --- DASHBOARD CHARTS (Non-Reactive) ---
+        renderStockChart() {
+            if (this.stock.length === 0) return;
+            let categoryCounts = {};
+            this.stock.forEach(item => {
+                const cat = item.category || item.product || 'Unknown';
+                if (item.remaining_stock > 0) categoryCounts[cat] = (categoryCounts[cat] || 0) + item.remaining_stock;
+            });
+
+            const options = {
+                chart: { 
+                    type: 'donut', height: 380, fontFamily: 'Inter, sans-serif',
+                    events: {
+                        dataPointSelection: (event, chartContext, config) => {
+                            if (config.dataPointIndex === undefined || config.dataPointIndex < 0) return;
+                            const clickedCategory = config.w.globals.labels[config.dataPointIndex];
+                            this.selectedStockCategory = clickedCategory;
+                            this.renderStockDrilldown(clickedCategory);
+                        }
+                    }
+                },
+                series: Object.values(categoryCounts),
+                labels: Object.keys(categoryCounts),
+                colors: ['#0071e3', '#30d158', '#ff9f0a', '#ff375f', '#5e5ce6', '#bf5af2', '#1c1c1e', '#8e8e93'],
+                plotOptions: { pie: { donut: { size: '65%' } } },
+                dataLabels: { enabled: false },
+                legend: { position: 'bottom', offsetY: 0, height: 80 },
+                cursor: 'pointer'
+            };
+
+            const container = document.querySelector("#stockMainChart");
+            if (container) {
+                if (this._stockMainChart) this._stockMainChart.destroy();
+                this._stockMainChart = new ApexCharts(container, options);
+                this._stockMainChart.render();
+            }
+        },
+
+        renderStockDrilldown(category = null) {
+            const filtered = this.stock.filter(item => {
+                if (item.remaining_stock <= 0) return false;
+                if (!category) return true;
+                return (item.category || item.product || 'Unknown') === category;
+            });
+            
+            let modelCounts = {};
+            filtered.forEach(item => {
+                const mod = item.model || 'Unknown';
+                modelCounts[mod] = (modelCounts[mod] || 0) + item.remaining_stock;
+            });
+
+            const sortedModels = Object.entries(modelCounts).sort((a, b) => b[1] - a[1]).slice(0, 15);
+
+            const options = {
+                chart: { type: 'bar', height: 380, fontFamily: 'Inter, sans-serif', toolbar: { show: false } },
+                series: [{ name: 'Units in Stock', data: sortedModels.map(m => m[1]) }],
+                xaxis: { categories: sortedModels.map(m => m[0]), labels: { style: { fontSize: '11px' } } },
+                colors: ['#0071e3'],
+                plotOptions: { bar: { borderRadius: 4, horizontal: true } },
+                dataLabels: { enabled: true }
+            };
+
+            const container = document.querySelector("#stockDrillChart");
+            if (container) {
+                if (this._stockDrillChart) this._stockDrillChart.destroy();
+                container.innerHTML = '';
+                this._stockDrillChart = new ApexCharts(container, options);
+                this._stockDrillChart.render();
+            }
+        },
+
+        renderUsageChart() {
+            let familyCounts = { 'iPhone Repairs': 0, 'Mac Repairs': 0, 'iPad Repairs': 0, 'Accessories & Other': 0 };
+            
+            this.filteredDashUsage.forEach(item => {
+                const m = (item.model || '').toLowerCase();
+                if (m.includes('iphone')) familyCounts['iPhone Repairs'] += 1;
+                else if (m.includes('mac')) familyCounts['Mac Repairs'] += 1;
+                else if (m.includes('ipad')) familyCounts['iPad Repairs'] += 1;
+                else familyCounts['Accessories & Other'] += 1;
+            });
+
+            const options = {
+                chart: { 
+                    type: 'donut', height: 380, fontFamily: 'Inter, sans-serif',
+                    events: {
+                        dataPointSelection: (event, chartContext, config) => {
+                            if (config.dataPointIndex === undefined || config.dataPointIndex < 0) return;
+                            const clickedFamily = config.w.globals.labels[config.dataPointIndex];
+                            this.selectedUsageFamily = clickedFamily;
+                            this.renderUsageDrilldown(clickedFamily);
+                        }
+                    }
+                },
+                series: Object.values(familyCounts),
+                labels: Object.keys(familyCounts),
+                colors: ['#30d158', '#0071e3', '#ff9f0a', '#8e8e93'],
+                plotOptions: { pie: { donut: { size: '65%' } } },
+                dataLabels: { enabled: false },
+                legend: { position: 'bottom', offsetY: 0, height: 80 },
+                cursor: 'pointer'
+            };
+
+            const container = document.querySelector("#usageMainChart");
+            if (container) {
+                if (this._usageMainChart) this._usageMainChart.destroy();
+                container.innerHTML = '';
+                if (this.filteredDashUsage.length > 0) {
+                    this._usageMainChart = new ApexCharts(container, options);
+                    this._usageMainChart.render();
+                }
+            }
+        },
+
+        renderUsageDrilldown(family = null) {
+            let modelCounts = {};
+            
+            this.filteredDashUsage.forEach(item => {
+                const m = (item.model || '').toLowerCase();
+                let itemFamily = 'Accessories & Other';
+                if (m.includes('iphone')) itemFamily = 'iPhone Repairs';
+                else if (m.includes('mac')) itemFamily = 'Mac Repairs';
+                else if (m.includes('ipad')) itemFamily = 'iPad Repairs';
+                
+                if (!family || itemFamily === family) {
+                    const mod = item.model || 'Unknown';
+                    modelCounts[mod] = (modelCounts[mod] || 0) + 1;
+                }
+            });
+
+            const sortedModels = Object.entries(modelCounts).sort((a, b) => b[1] - a[1]).slice(0, 15);
+
+            const options = {
+                chart: { type: 'bar', height: 380, fontFamily: 'Inter, sans-serif', toolbar: { show: false } },
+                series: [{ name: 'Parts Used', data: sortedModels.map(m => m[1]) }],
+                xaxis: { categories: sortedModels.map(m => m[0]), labels: { style: { fontSize: '11px' } } },
+                colors: ['#30d158'],
+                plotOptions: { bar: { borderRadius: 4, horizontal: true } },
+                dataLabels: { enabled: true }
+            };
+
+            const container = document.querySelector("#usageDrillChart");
+            if (container) {
+                if (this._usageDrillChart) this._usageDrillChart.destroy();
+                container.innerHTML = '';
+                if (this.filteredDashUsage.length > 0) {
+                    this._usageDrillChart = new ApexCharts(container, options);
+                    this._usageDrillChart.render();
+                }
+            }
+        },
+
+        // --- KBB RETURNS LOGIC ---
+        async fetchKBBs() {
+            try {
+                const res = await fetch('/api/kbb');
+                const data = await res.json();
+                this.kbbList = data.map(k => ({
+                    ...k,
+                    // Pre-fill the input box with the extracted KBB Serial Number from Excel
+                    inputKbbSerial: k.kbb_serial || '' 
+                }));
+            } catch(e) { this.kbbList = []; }
+        },
+        async processKbbReturn(kbb) {
+            if (!kbb.inputAwb) return alert("Return Waybill (AWB) is required!");
+            try {
+                const res = await fetch('/api/kbb/return', {
+                    method: 'POST', headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ id: kbb.id, kbbSerial: kbb.inputKbbSerial, returnAwb: kbb.inputAwb.trim() })
+                });
+                if (!res.ok) throw new Error("Database Error");
+                this.fetchKBBs();
+            } catch(err) { alert("Error processing KBB: " + err.message); }
+        },
+        async closeKbbReturn(kbb) {
+            const remark = prompt("Reason for closing without return (e.g. Liquid Damage, Beyond Repair):");
+            if (!remark) return;
+            try {
+                const res = await fetch('/api/kbb/close', {
+                    method: 'POST', headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ id: kbb.id, remark: remark.trim() })
+                });
+                if (!res.ok) throw new Error("Database Error");
+                this.fetchKBBs();
+            } catch(err) { alert("Error closing KBB: " + err.message); }
+        },
+
         exportStock() {
             const cleanData = this.filteredStock.map(item => ({
                 "Part Number": item.part_number,
@@ -714,17 +1117,11 @@ createApp({
             this.downloadExcel(cleanData, "AASP_Stock_Report");
         },
         exportReport() {
-            // Build a smart date tag for the filename
             let dateSuffix = '';
-            if (this.reportStart && this.reportEnd) {
-                dateSuffix = `_${this.reportStart}_to_${this.reportEnd}`;
-            } else if (this.reportStart) {
-                dateSuffix = `_from_${this.reportStart}`;
-            } else if (this.reportEnd) {
-                dateSuffix = `_until_${this.reportEnd}`;
-            } else {
-                dateSuffix = `_All_Dates`;
-            }
+            if (this.reportStart && this.reportEnd) dateSuffix = `_${this.reportStart}_to_${this.reportEnd}`;
+            else if (this.reportStart) dateSuffix = `_from_${this.reportStart}`;
+            else if (this.reportEnd) dateSuffix = `_until_${this.reportEnd}`;
+            else dateSuffix = `_All_Dates`;
 
             if (this.reportType === 'receiving') {
                 const cleanData = this.filteredReceiving.map(item => ({
@@ -743,6 +1140,7 @@ createApp({
                     "Repair ID": item.repair_id,
                     "Part Number": item.part_number,
                     "Description": item.description,
+                    "Source": item.is_stock_deduction ? 'Inventory Stock' : 'Customer Specific',
                     "Serial Number": item.serial_number || 'N/A',
                     "Technician": item.technician
                 }));
@@ -864,11 +1262,9 @@ createApp({
             this.parsedItems = []; this.parsedAwb = ''; 
             const text = this.rawPDFText; if (!text) return;
             
-            // Extract AWB
             const awbMatch = text.match(/HAWB[^\d]*(\d+)/i) || text.match(/AWB[^\d]*(\d+)/i) || text.match(/Tracking[^\d]*(\d+)/i); 
             if (awbMatch) this.parsedAwb = awbMatch[1];
             
-            // Fallback for global PO if a specific line doesn't have one
             let globalPo = null;
             const poMatch = text.match(/(Gnext-SSO[^\s,]+|SSO[^\s,]+|FOC[^\s,]+)/i);
             if (poMatch) globalPo = poMatch[1];
@@ -881,60 +1277,39 @@ createApp({
                 let repairMatch = blockText.match(/(G\d{8,10})/i);
                 if (!repairMatch) repairMatch = text.match(/(G\d{8,10})/i);
                 
-                // EXTRACT QUANTITY: Catch 3.0 instead of forcing 1
                 let qty = 1;
                 const qtyMatch = blockText.match(/(?:,|\b)(\d+)(?:\.0+)?[,\s]+["']?SI/i);
-                if (qtyMatch) {
-                    qty = parseInt(qtyMatch[1], 10);
-                }
+                if (qtyMatch) qty = parseInt(qtyMatch[1], 10);
                 
-                // 1. Get Top Half of PO
                 let localPo = globalPo;
                 const lineStart = text.lastIndexOf('\n', match.index);
                 const prefix = text.substring(lineStart === -1 ? 0 : lineStart, match.index);
                 const tokens = prefix.split(',').map(t => t.trim()).filter(t => t);
+                if (tokens.length >= 3) localPo = tokens[tokens.length - 3];
                 
-                if (tokens.length >= 3) {
-                    localPo = tokens[tokens.length - 3];
-                }
-                
-                // 2. Get Bottom Half of PO (-IW or -OW or -Cons)
                 let contPo = "";
                 const contMatch = blockText.match(/,+([A-Za-z0-9\-_]+-(?:IW|OW|Cons)),+/i);
-                if (contMatch) {
-                    contPo = contMatch[1];
-                }
+                if (contMatch) contPo = contMatch[1];
                 
-                // 3. Smart Stitching: Overlap and Merge
                 if (localPo && contPo && localPo !== 'N/A') {
                     let maxOverlap = 0;
                     let a = localPo.trim();
                     let b = contPo.trim();
-                    
                     for (let i = 1; i <= Math.min(a.length, b.length); i++) {
                         if (a.substring(a.length - i).toLowerCase() === b.substring(0, i).toLowerCase()) {
                             maxOverlap = i;
                         }
                     }
-                    if (maxOverlap > 0) {
-                        localPo = a + b.substring(maxOverlap); 
-                    } else {
-                        localPo = a + b; 
-                    }
+                    if (maxOverlap > 0) localPo = a + b.substring(maxOverlap); 
+                    else localPo = a + b; 
                 }
                 
-                // Push item exactly 'qty' times and AUTO-TAG FOC parts!
                 for (let i = 0; i < qty; i++) {
                     const isConsumable = localPo && localPo.toUpperCase().includes('FOC') ? 'FOC' : 'REFILLED';
-                    
                     this.parsedItems.push({ 
-                        awb: this.parsedAwb || 'UNKNOWN_AWB', 
-                        poNumber: localPo, 
-                        partNumber: match[1], 
-                        serialNumber: snMatch ? snMatch[1] : null, 
-                        repairId: repairMatch ? repairMatch[1] : null,
-                        classification: isConsumable, 
-                        qty: 1 
+                        awb: this.parsedAwb || 'UNKNOWN_AWB', poNumber: localPo, partNumber: match[1], 
+                        serialNumber: snMatch ? snMatch[1] : null, repairId: repairMatch ? repairMatch[1] : null,
+                        classification: isConsumable, qty: 1 
                     });
                 }
             });
@@ -969,21 +1344,47 @@ createApp({
             this.resetUseForm(); this.fetchStock(); this.fetchDataForReports(); 
             setTimeout(() => this.successMsg = '', 3000);
         },
+
+        // CSO SHEET EXCEL PARSER
         uploadBulkUseExcel(event) {
             const file = event.target.files[0]; if (!file) return;
             const reader = new FileReader();
             reader.onload = async (e) => {
                 const workbook = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
-                const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                const sheetName = workbook.SheetNames.find(n => n.includes('2026') || n.includes('Sheet1') || n.includes('Oct')) || workbook.SheetNames[0];
+                const firstSheet = workbook.Sheets[sheetName];
                 const data = XLSX.utils.sheet_to_json(firstSheet);
-                const items = data.map(row => ({
-                    repairId: row['Repair ID'] || row['Repair_ID'] || row['Repair'] || 'UNKNOWN',
-                    partNumber: row['Part Number'] || row['Part_Number'] || row['PartNumber'] || row['Part'],
-                    serialNumber: row['Serial Number'] || row['Serial_Number'] || row['S/N'] || row['SN'] || null,
-                    technician: row['Technician ID'] || row['Technician_ID'] || row['Technician'] || 'TECH'
-                })).filter(item => item.partNumber);
+
+                const items = data.map(row => {
+                    const rId = row['Repair ID'] || row['Repair_ID'] || row['Repair'];
+                    const pNum = row['Parts Number'] || row['Part Number'] || row['Part_Number'] || row['PartNumber'] || row['Part'];
+                    const desc = row['Product Name'] || row['Description'] || '';
+                    const devSn = row["Device's Serial Number"] || row['Device Serial Number'] || row['Device_Serial'] || 'UNKNOWN';
+                    
+                    // KGB = Good Replacement Part S/N, KBB = Broken Defective Part S/N
+                    const kgbSn = row['KGB Serial Number'] || row['Serial Number'] || row['Serial_Number'] || row['S/N'] || row['SN'] || null;
+                    const kbbSn = row['KBB Serial Number'] || row['KBB S/N'] || row['Defective S/N'] || null;
+                    
+                    const tech = row['Technician Name'] || row['Technician ID'] || row['Technician'] || 'TECH';
+                    const warranty = row['Warranty Status'] || null;
+                    
+                    const progressStatus = (row['Repair in Progress'] || '').toString().toUpperCase();
+                    const isStock = progressStatus.includes('STOCK') && !progressStatus.includes('NO STOCK');
+
+                    return {
+                        repairId: rId,
+                        partNumber: pNum,
+                        description: desc,
+                        deviceSn: devSn,
+                        serialNumber: kgbSn, // Replacement Part S/N
+                        kbbSerial: kbbSn,     // Defective Broken Part S/N
+                        technician: tech,
+                        warrantyStatus: warranty,
+                        isStock: isStock
+                    };
+                }).filter(item => item.partNumber && item.repairId);
                 
-                if(items.length === 0) return alert("No valid parts found in the Excel file. Please check your column headers.");
+                if(items.length === 0) return alert("No valid parts found in the Excel file. Please check column headers (Repair ID, Parts Number).");
                 
                 try {
                     const res = await fetch('/api/bulk-use', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ items }) });
@@ -991,8 +1392,9 @@ createApp({
                         const errData = await res.json();
                         throw new Error(errData.error || "Unknown Database Error");
                     }
-                    this.successMsg = `Successfully recorded ${items.length} parts from bulk upload!`;
-                    this.fetchStock(); this.fetchDataForReports();
+                    const resData = await res.json();
+                    this.successMsg = `Processed sheet: Added ${resData.addedCount} new repairs (skipped ${resData.skippedCount} duplicates)!`;
+                    this.fetchStock(); this.fetchDataForReports(); this.fetchKBBs();
                 } catch (err) {
                     alert("Bulk Upload Error: " + err.message);
                 }
