@@ -8,6 +8,34 @@ const pool = new Pool({
   ssl: { require: true }
 });
 
+// --- AUTO DATABASE SETUP ---
+// This runs once when the server starts to ensure your tables have the new columns
+async function initDB() {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS kbb_returns (
+        id SERIAL PRIMARY KEY,
+        repair_id VARCHAR(100),
+        device_serial VARCHAR(100),
+        part_number VARCHAR(100),
+        kbb_serial VARCHAR(100),
+        technician VARCHAR(100),
+        return_awb VARCHAR(100),
+        status VARCHAR(50) DEFAULT 'PENDING',
+        remark TEXT,
+        created_at TIMESTAMP DEFAULT NOW(),
+        resolved_at TIMESTAMP
+      );
+    `);
+    await pool.query(`ALTER TABLE usage_logs ADD COLUMN IF NOT EXISTS is_stock_deduction BOOLEAN DEFAULT TRUE;`);
+    await pool.query(`ALTER TABLE usage_logs ADD COLUMN IF NOT EXISTS warranty_status VARCHAR(50);`);
+    console.log("Database Schema Verified & Updated.");
+  } catch(e) {
+    console.error("DB Init Error:", e.message);
+  }
+}
+initDB();
+
 fastify.register(require("@fastify/static"), {
   root: path.join(__dirname, "public"),
   prefix: "/",
@@ -26,7 +54,6 @@ function detectCategory(description) {
   else if (desc.includes('ENCLOSURE') || desc.includes('TOP CASE') || desc.includes('HOUSING')) category = 'Enclosure';
   else if (desc.includes('CABLE') || desc.includes('FLEX')) category = 'Flex Cable';
   else if (desc.includes('SPEAKER') || desc.includes('AUDIO')) category = 'Audio / Speaker';
-  else if (desc.includes('ADAPTER') || desc.includes('POWER')) category = 'Power / Adapter';
   else if (desc.includes('ADAPTER') || desc.includes('POWER')) category = 'Power Adapter';
 
   let model = 'Unknown';
@@ -48,7 +75,7 @@ fastify.get("/api/stock", async (request, reply) => {
         p.description, 
         p.base_seed_qty as current_seed_qty,
         (SELECT COUNT(*) FROM shipment_items s WHERE s.part_number = p.part_number AND s.status = 'RECEIVED' AND (s.classification IS NULL OR s.classification::text NOT IN ('LEGACY_SEED', 'FOC'))) as total_refilled_received,
-        (SELECT COUNT(*) FROM usage_logs u WHERE u.part_number = p.part_number) as total_used,
+        (SELECT COUNT(*) FROM usage_logs u WHERE u.part_number = p.part_number AND u.is_stock_deduction = TRUE) as total_used,
         (SELECT COUNT(*) FROM reservations r WHERE r.part_number = p.part_number AND r.status = 'RESERVED') as total_reserved,
         (SELECT COUNT(*) FROM shipment_items s WHERE s.part_number = p.part_number AND s.classification = 'FOC') as total_foc
       FROM parts p
@@ -113,19 +140,12 @@ fastify.post("/api/upload-packing-list", async (request, reply) => {
     const awbNumber = items.length > 0 ? items[0].awb : null;
     if (!awbNumber) return { success: true, addedCount: 0 };
 
-    // Get snapshot of existing database items for this AWB
-    const { rows: dbItems } = await pool.query(
-      `SELECT id, part_number, serial_number, repair_id, po_number FROM shipment_items WHERE awb_number = $1`, 
-      [awbNumber]
-    );
-
+    const { rows: dbItems } = await pool.query(`SELECT id, part_number, serial_number, repair_id, po_number FROM shipment_items WHERE awb_number = $1`, [awbNumber]);
     let availableDbItems = [...dbItems];
 
     for (let item of items) {
-      // Auto-detect Category & Model if missing
       const { category, model } = detectCategory(item.description);
 
-      // Ensure the part profile exists
       const partQuery = `
         INSERT INTO parts (part_number, product, model, description, base_seed_qty) 
         VALUES ($1, $2, $3, $4, 0) 
@@ -135,38 +155,27 @@ fastify.post("/api/upload-packing-list", async (request, reply) => {
       `;
       await pool.query(partQuery, [item.partNumber, category, model, item.description || 'Auto-added from Packing List']);
 
-      let matchIndex = -1;
-
-      // 1. Strict match (Part + SN + Repair ID)
-      matchIndex = availableDbItems.findIndex(db => 
+      let matchIndex = availableDbItems.findIndex(db => 
         db.part_number === item.partNumber && 
         (db.serial_number === item.serialNumber || (!db.serial_number && !item.serialNumber)) &&
         (db.repair_id === item.repairId || (!db.repair_id && !item.repairId))
       );
 
-      // 2. Fallback match (Part + Repair ID)
       if (matchIndex === -1) {
-        matchIndex = availableDbItems.findIndex(db => 
-          db.part_number === item.partNumber && 
-          (db.repair_id === item.repairId || (!db.repair_id && !item.repairId))
-        );
+        matchIndex = availableDbItems.findIndex(db => db.part_number === item.partNumber && (db.repair_id === item.repairId || (!db.repair_id && !item.repairId)));
       }
 
-      // 3. Final fallback (Part Number only)
       if (matchIndex === -1) {
         matchIndex = availableDbItems.findIndex(db => db.part_number === item.partNumber);
       }
 
       if (matchIndex !== -1) {
         const matchedDbItem = availableDbItems[matchIndex];
-        
-        // FORCE OVERWRITE: Fix chopped or incorrect PO numbers
         if (item.poNumber && item.poNumber !== 'N/A') {
            await pool.query(`UPDATE shipment_items SET po_number = $1 WHERE id = $2`, [item.poNumber, matchedDbItem.id]);
         }
         availableDbItems.splice(matchIndex, 1);
       } else {
-        // Genuine new part insertion
         const query = `INSERT INTO shipment_items (awb_number, part_number, serial_number, qty, status, repair_id, po_number) VALUES ($1, $2, $3, $4, 'IN_TRANSIT', $5, $6)`;
         await pool.query(query, [item.awb, item.partNumber, item.serialNumber || null, item.qty || 1, item.repairId || null, item.poNumber || null]);
         addedCount++;
@@ -200,7 +209,7 @@ fastify.get("/api/serials/:part", async (request, reply) => {
     const query = `
       SELECT serial_number FROM shipment_items WHERE part_number = $1 AND status = 'RECEIVED' AND serial_number IS NOT NULL
       EXCEPT
-      SELECT serial_number FROM usage_logs WHERE part_number = $1 AND serial_number IS NOT NULL
+      SELECT serial_number FROM usage_logs WHERE part_number = $1 AND serial_number IS NOT NULL AND is_stock_deduction = TRUE
     `;
     const result = await pool.query(query, [part]);
     return result.rows.map(r => r.serial_number);
@@ -213,7 +222,7 @@ fastify.get("/api/identify-sn/:sn", async (request, reply) => {
     const query = `
       SELECT part_number FROM shipment_items 
       WHERE serial_number = $1 AND status = 'RECEIVED' 
-      AND serial_number NOT IN (SELECT serial_number FROM usage_logs WHERE serial_number IS NOT NULL)
+      AND serial_number NOT IN (SELECT serial_number FROM usage_logs WHERE serial_number IS NOT NULL AND is_stock_deduction = TRUE)
       LIMIT 1
     `;
     const result = await pool.query(query, [sn]);
@@ -221,34 +230,133 @@ fastify.get("/api/identify-sn/:sn", async (request, reply) => {
   } catch (err) { return reply.code(500).send({ error: err.message }); }
 });
 
+// Single Manual Use
 fastify.post("/api/use", async (request, reply) => {
   try {
     const { repairId, partNumber, serialNumber, technician } = request.body;
-    const query = `INSERT INTO usage_logs (repair_id, device_serial, part_number, serial_number, technician) VALUES ($1, 'UNKNOWN', $2, $3, $4)`;
-    await pool.query(query, [repairId, partNumber, serialNumber || null, technician]);
+    
+    // Manual use assumes it is a physical stock deduction
+    const useQuery = `INSERT INTO usage_logs (repair_id, device_serial, part_number, serial_number, technician, is_stock_deduction) VALUES ($1, 'UNKNOWN', $2, $3, $4, TRUE)`;
+    await pool.query(useQuery, [repairId, partNumber, serialNumber || null, technician]);
+    
+    // Spawn KBB Return
+    const kbbQuery = `INSERT INTO kbb_returns (repair_id, part_number, kbb_serial, technician, status) VALUES ($1, $2, $3, $4, 'PENDING')`;
+    await pool.query(kbbQuery, [repairId, partNumber, serialNumber || null, technician]);
+    
     return { success: true };
   } catch (err) { return reply.code(500).send({ error: err.message }); }
 });
 
+// Bulk Upload Usage (With Duplicate Skipping & Smart Stock Logic)
+// Bulk Upload Usage (With KBB Serial Number & Strict Duplicate Skipping)
 fastify.post("/api/bulk-use", async (request, reply) => {
   try {
     const items = request.body.items;
     let addedCount = 0;
+    let skippedCount = 0;
+    
     for (let item of items) {
       if (!item.partNumber) continue; 
-      const partQuery = `INSERT INTO parts (part_number, product, model, description, base_seed_qty) VALUES ($1, 'Unknown', 'Unknown', 'Auto-added from Bulk Usage', 0) ON CONFLICT (part_number) DO NOTHING`;
-      await pool.query(partQuery, [item.partNumber.toString().trim()]);
       
-      const query = `INSERT INTO usage_logs (repair_id, device_serial, part_number, serial_number, technician) VALUES ($1, 'UNKNOWN', $2, $3, $4)`;
-      await pool.query(query, [
-        item.repairId ? item.repairId.toString().trim() : 'UNKNOWN_REPAIR', 
-        item.partNumber.toString().trim(), 
-        item.serialNumber ? item.serialNumber.toString().trim() : null, 
-        item.technician ? item.technician.toString().trim() : 'TECH'
-      ]);
+      const pNum = item.partNumber.toString().trim();
+      const rId = item.repairId ? item.repairId.toString().trim() : 'UNKNOWN_REPAIR';
+      
+      // STRICT DUPLICATE CHECK: Skip if Repair ID + Part Number is ALREADY in usage_logs
+      const checkUsage = await pool.query(
+        `SELECT id FROM usage_logs WHERE repair_id = $1 AND part_number = $2`, 
+        [rId, pNum]
+      );
+      if (checkUsage.rows.length > 0) {
+        skippedCount++;
+        continue; // Skip existing record completely
+      }
+
+      const sn = item.serialNumber ? item.serialNumber.toString().trim() : null;
+      const kbbSn = item.kbbSerial ? item.kbbSerial.toString().trim() : sn; // Fallback to replacement SN if blank
+      const tech = item.technician ? item.technician.toString().trim() : 'TECH';
+      const devSn = item.deviceSn ? item.deviceSn.toString().trim() : 'UNKNOWN';
+      const warranty = item.warrantyStatus ? item.warrantyStatus.toString().trim() : null;
+      const isStock = item.isStock === true;
+
+      // Check if it's a Battery/Consumable for Auto-Archive
+      const { category } = detectCategory(item.description);
+      const isNonReturnable = category === 'Battery' || (item.description && item.description.toUpperCase().includes('BATTERY'));
+      
+      let kbbStatus = isNonReturnable ? 'NON_RETURNABLE' : 'PENDING';
+      let kbbRemark = isNonReturnable ? 'Auto-Closed: Consumable/Battery' : null;
+
+      // 1. Ensure Part exists in DB
+      await pool.query(
+        `INSERT INTO parts (part_number, product, model, description, base_seed_qty) 
+         VALUES ($1, 'Unknown', 'Unknown', 'Auto-added from Bulk Usage', 0) 
+         ON CONFLICT (part_number) DO NOTHING`, 
+        [pNum]
+      );
+      
+      // 2. Insert into Usage Logs
+      await pool.query(
+        `INSERT INTO usage_logs (repair_id, device_serial, part_number, serial_number, technician, is_stock_deduction, warranty_status) 
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`, 
+        [rId, devSn, pNum, sn, tech, isStock, warranty]
+      );
+      
+      // 3. Spawn KBB Return record with the extracted Broken Part S/N
+      const checkKbb = await pool.query(`SELECT id FROM kbb_returns WHERE repair_id = $1 AND part_number = $2`, [rId, pNum]);
+      if (checkKbb.rows.length === 0) {
+        if (isNonReturnable) {
+          await pool.query(
+            `INSERT INTO kbb_returns (repair_id, device_serial, part_number, kbb_serial, technician, status, remark, resolved_at) 
+             VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`, 
+            [rId, devSn, pNum, kbbSn, tech, kbbStatus, kbbRemark]
+          );
+        } else {
+          await pool.query(
+            `INSERT INTO kbb_returns (repair_id, device_serial, part_number, kbb_serial, technician, status) 
+             VALUES ($1, $2, $3, $4, $5, 'PENDING')`, 
+            [rId, devSn, pNum, kbbSn, tech]
+          );
+        }
+      }
+      
       addedCount++;
     }
-    return { success: true, addedCount };
+    return { success: true, addedCount, skippedCount };
+  } catch (err) { return reply.code(500).send({ error: err.message }); }
+});
+
+// --- NEW KBB RETURN ENDPOINTS ---
+fastify.get("/api/kbb", async (request, reply) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT 
+        k.id,
+        k.repair_id,
+        k.device_serial,
+        k.part_number,
+        u.serial_number AS good_serial,
+        k.kbb_serial,
+        k.technician,
+        k.return_awb,
+        k.status,
+        k.remark,
+        k.created_at,
+        k.resolved_at,
+        p.description 
+      FROM kbb_returns k 
+      LEFT JOIN parts p ON k.part_number = p.part_number 
+      LEFT JOIN usage_logs u ON k.repair_id = u.repair_id AND k.part_number = u.part_number
+      ORDER BY k.created_at DESC
+    `);
+    return rows;
+  } catch (err) { return reply.code(500).send({ error: err.message }); }
+});
+
+fastify.post("/api/kbb/close", async (request, reply) => {
+  try {
+    const { id, remark } = request.body;
+    const query = `UPDATE kbb_returns SET status = 'NON_RETURNABLE', remark = $1, resolved_at = NOW() WHERE id = $2`;
+    await pool.query(query, [remark, id]);
+    return { success: true };
   } catch (err) { return reply.code(500).send({ error: err.message }); }
 });
 
@@ -279,7 +387,7 @@ fastify.get("/api/received-history", async (request, reply) => {
 fastify.get("/api/usage-history", async (request, reply) => {
   try {
     const query = `
-      SELECT u.id, u.repair_id, u.part_number, u.serial_number, u.technician, u.created_at as used_at, p.description, p.model 
+      SELECT u.id, u.repair_id, u.part_number, u.serial_number, u.technician, u.is_stock_deduction, u.warranty_status, u.created_at as used_at, p.description, p.model 
       FROM usage_logs u LEFT JOIN parts p ON u.part_number = p.part_number
       ORDER BY u.created_at DESC
     `;
@@ -288,7 +396,6 @@ fastify.get("/api/usage-history", async (request, reply) => {
   } catch (err) { return reply.code(500).send({ error: err.message }); }
 });
 
-// Manual Add Endpoint
 fastify.post("/api/manual-add", async (request, reply) => {
   try {
     const { partNumber, serialNumber, classification, remark } = request.body;
@@ -304,7 +411,6 @@ fastify.post("/api/manual-add", async (request, reply) => {
   } catch (err) { return reply.code(500).send({ error: err.message }); }
 });
 
-// Edit Part Details Endpoint (Supports Category, Model, and Description)
 fastify.post("/api/update-part", async (request, reply) => {
   try {
     const { partNumber, product, model, description } = request.body;
