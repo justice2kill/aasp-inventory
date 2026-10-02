@@ -478,15 +478,20 @@
                             
                             <p class="text-xs text-gray-500 mb-3 leading-tight">{{ kbb.description || 'No description available' }}</p>
                             
+                            <!-- The Cleaned Up Serial Number Badge -->
                             <div class="text-xs text-gray-500 font-mono bg-gray-50 p-2.5 rounded-lg border border-gray-200 mb-4 flex flex-wrap justify-between items-center gap-3">
                                 <span>Device S/N: <strong class="text-gray-900 font-semibold">{{ kbb.device_serial }}</strong></span>
-                                <span v-if="kbb.good_serial">KGB S/N: <strong class="text-blue-600 font-bold">{{ kbb.good_serial }}</strong></span>
+                                <span v-if="kbb.good_serial && kbb.good_serial !== 'N/A'">KGB S/N: <strong class="text-blue-600 font-bold">{{ kbb.good_serial }}</strong></span>
                                 <span v-if="kbb.kbb_serial">KBB S/N: <strong class="text-amber-700 font-bold">{{ kbb.kbb_serial }}</strong></span>
                             </div>
 
-                            <!-- Actions Box -->
+                            <!-- The Actions Box (AWB and Shipping) -->
                             <div class="flex flex-col gap-2 pt-3 border-t border-gray-100">
-                               
+                                <div class="flex gap-2">
+                                    <input v-model="kbb.inputKbbSerial" type="text" placeholder="KBB S/N (Defective)" class="flex-1 p-2 bg-gray-50 border border-gray-200 rounded-lg text-xs font-mono outline-none focus:ring-2 focus:ring-amber-500">
+                                    <input v-model="kbb.inputAwb" type="text" placeholder="Return Waybill (AWB)" class="flex-1 p-2 bg-gray-50 border border-gray-200 rounded-lg text-xs font-mono outline-none focus:ring-2 focus:ring-amber-500">
+                                    <button @click="processKbbReturn(kbb)" :disabled="!kbb.inputAwb" class="bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-lg text-xs font-bold transition disabled:opacity-50 shrink-0 shadow-sm">Ship</button>
+                                </div>
                                 <div class="flex justify-end mt-1">
                                     <button @click="closeKbbReturn(kbb)" class="text-[11px] font-bold text-red-600 hover:text-red-800 hover:underline">Mark Non-Returnable / Beyond Repair &rarr;</button>
                                 </div>
