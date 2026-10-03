@@ -233,15 +233,42 @@ fastify.get("/api/identify-sn/:sn", async (request, reply) => {
 // Single Manual Use
 fastify.post("/api/use", async (request, reply) => {
   try {
-    const { repairId, partNumber, serialNumber, technician } = request.body;
+    const { repairId, partNumber, serialNumber, kbbSerial, deviceSn, technician, warrantyStatus, isStock } = request.body;
+
+    const pNum = partNumber.trim();
+    const rId = repairId.trim();
+    const devSn = deviceSn ? deviceSn.trim() : 'UNKNOWN';
+    const kgbSn = serialNumber ? serialNumber.trim() : null;
+    const kbbSn = kbbSerial ? kbbSerial.trim() : kgbSn; // Fallback to replacement SN if blank
+    const wStat = warrantyStatus ? warrantyStatus.trim() : 'OW';
+    const stockFlag = isStock === undefined ? true : isStock;
     
-    // Manual use assumes it is a physical stock deduction
-    const useQuery = `INSERT INTO usage_logs (repair_id, device_serial, part_number, serial_number, technician, is_stock_deduction) VALUES ($1, 'UNKNOWN', $2, $3, $4, TRUE)`;
-    await pool.query(useQuery, [repairId, partNumber, serialNumber || null, technician]);
+    // 1. Strict Duplicate Check
+    const checkUsage = await pool.query(`SELECT id FROM usage_logs WHERE repair_id = $1 AND part_number = $2`, [rId, pNum]);
+    if (checkUsage.rows.length > 0) throw new Error("This Repair ID and Part Number combination is already recorded.");
+
+    // 2. Fetch Description to auto-archive Batteries
+    const partRes = await pool.query(`SELECT description FROM parts WHERE part_number = $1`, [pNum]);
+    let description = partRes.rows.length > 0 ? partRes.rows[0].description : '';
+    const { category } = detectCategory(description);
+    const isNonReturnable = category === 'Battery' || (description && description.toUpperCase().includes('BATTERY'));
     
-    // Spawn KBB Return
-    const kbbQuery = `INSERT INTO kbb_returns (repair_id, part_number, kbb_serial, technician, status) VALUES ($1, $2, $3, $4, 'PENDING')`;
-    await pool.query(kbbQuery, [repairId, partNumber, serialNumber || null, technician]);
+    let kbbStatus = isNonReturnable ? 'NON_RETURNABLE' : 'PENDING';
+    let kbbRemark = isNonReturnable ? 'Auto-Closed: Consumable/Battery' : null;
+
+    // 3. Log the usage
+    const useQuery = `INSERT INTO usage_logs (repair_id, device_serial, part_number, serial_number, technician, is_stock_deduction, warranty_status) VALUES ($1, $2, $3, $4, $5, $6, $7)`;
+    await pool.query(useQuery, [rId, devSn, pNum, kgbSn, technician, stockFlag, wStat]);
+    
+    // 4. Spawn the Pending KBB Return
+    const checkKbb = await pool.query(`SELECT id FROM kbb_returns WHERE repair_id = $1 AND part_number = $2`, [rId, pNum]);
+    if (checkKbb.rows.length === 0) {
+        if (isNonReturnable) {
+            await pool.query(`INSERT INTO kbb_returns (repair_id, device_serial, part_number, kbb_serial, technician, status, remark, resolved_at) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`, [rId, devSn, pNum, kbbSn, technician, kbbStatus, kbbRemark]);
+        } else {
+            await pool.query(`INSERT INTO kbb_returns (repair_id, device_serial, part_number, kbb_serial, technician, status) VALUES ($1, $2, $3, $4, $5, 'PENDING')`, [rId, devSn, pNum, kbbSn, technician]);
+        }
+    }
     
     return { success: true };
   } catch (err) { return reply.code(500).send({ error: err.message }); }
@@ -387,7 +414,8 @@ fastify.get("/api/received-history", async (request, reply) => {
 fastify.get("/api/usage-history", async (request, reply) => {
   try {
     const query = `
-      SELECT u.id, u.repair_id, u.part_number, u.serial_number, u.technician, u.is_stock_deduction, u.warranty_status, u.created_at as used_at, p.description, p.model 
+      SELECT u.id, u.repair_id, u.device_serial, u.part_number, u.serial_number, u.technician, u.is_stock_deduction, u.warranty_status, u.created_at as used_at, p.description, p.model,
+             (SELECT kbb_serial FROM kbb_returns k WHERE k.repair_id = u.repair_id AND k.part_number = u.part_number LIMIT 1) as kbb_serial
       FROM usage_logs u LEFT JOIN parts p ON u.part_number = p.part_number
       ORDER BY u.created_at DESC
     `;

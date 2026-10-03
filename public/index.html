@@ -412,31 +412,58 @@
                     <p v-if="useSearchError" class="text-red-600 text-sm mt-3 font-medium">{{ useSearchError }}</p>
                 </div>
 
-                <form @submit.prevent="usePart" class="space-y-5" v-if="useForm.partNumber">
+                <form @submit.prevent="usePart" class="space-y-4" v-if="useForm.partNumber">
                     <div class="p-5 bg-white border border-gray-200 rounded-xl flex justify-between items-center shadow-sm">
                         <div>
                             <p class="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Target Component</p>
                             <p class="font-mono font-extrabold text-xl text-slate-900">{{ useForm.partNumber }}</p>
                         </div>
-                        <button type="button" @click="resetUseForm" class="text-sm text-[#0071e3] font-semibold hover:underline">Change</button>
+                        <button type="button" @click="resetUseForm" class="text-sm text-[#0071e3] font-semibold hover:underline">Change Part</button>
                     </div>
-                    <div>
-                        <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Repair ID</label>
-                        <input v-model="useForm.repairId" type="text" required class="w-full p-3 bg-white border border-gray-200 rounded-xl font-semibold text-gray-900 outline-none focus:ring-2 focus:ring-[#0071e3] shadow-sm">
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Repair ID *</label>
+                            <input v-model="useForm.repairId" type="text" required class="w-full p-2.5 bg-white border border-gray-200 rounded-lg font-semibold text-gray-900 outline-none focus:ring-2 focus:ring-[#0071e3] shadow-sm">
+                        </div>
+                        <div>
+                            <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Technician Name *</label>
+                            <input v-model="useForm.technician" type="text" required class="w-full p-2.5 bg-white border border-gray-200 rounded-lg font-semibold text-gray-900 outline-none focus:ring-2 focus:ring-[#0071e3] shadow-sm">
+                        </div>
+                        <div>
+                            <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Device Serial Number</label>
+                            <input v-model="useForm.deviceSn" type="text" placeholder="e.g. C02ABCDEF" class="w-full p-2.5 bg-white border border-gray-200 rounded-lg font-mono text-sm text-gray-900 outline-none focus:ring-2 focus:ring-[#0071e3] shadow-sm">
+                        </div>
+                        <div>
+                            <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Warranty Status</label>
+                            <select v-model="useForm.warrantyStatus" class="w-full p-2.5 bg-white border border-gray-200 rounded-lg font-semibold text-gray-900 outline-none focus:ring-2 focus:ring-[#0071e3] shadow-sm cursor-pointer">
+                                <option value="W">W (In Warranty)</option>
+                                <option value="OW">OW (Out of Warranty)</option>
+                                <option value="SSO">SSO / REP</option>
+                                <option value="CRU">CRU</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">KGB S/N (New Part)</label>
+                            <select v-if="availableSerials.length > 0" v-model="useForm.serialNumber" class="w-full p-2.5 bg-white border border-gray-200 rounded-lg font-mono text-sm text-gray-900 outline-none focus:ring-2 focus:ring-[#0071e3] cursor-pointer shadow-sm">
+                                <option value="">-- Non-Serialized --</option>
+                                <option v-for="sn in availableSerials" :key="sn" :value="sn">{{ sn }}</option>
+                            </select>
+                            <div v-else class="p-2.5 bg-white border border-gray-200 rounded-lg shadow-sm"><p class="text-sm text-gray-500 italic">No serialized units available. Logging as non-serialized.</p></div>
+                        </div>
+                        <div>
+                            <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">KBB S/N (Defective Part)</label>
+                            <input v-model="useForm.kbbSerial" type="text" placeholder="Broken part S/N" class="w-full p-2.5 bg-white border border-gray-200 rounded-lg font-mono text-sm text-gray-900 outline-none focus:ring-2 focus:ring-[#0071e3] shadow-sm">
+                        </div>
+                        <div class="md:col-span-2">
+                            <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Repair In Progress (Source)</label>
+                            <select v-model="useForm.isStock" class="w-full p-2.5 bg-white border border-gray-200 rounded-lg font-semibold text-gray-900 outline-none focus:ring-2 focus:ring-[#0071e3] shadow-sm cursor-pointer">
+                                <option :value="true">Stock (Deduct from Physical Inventory)</option>
+                                <option :value="false">No Stock (Customer Ordered Part - Do not deduct)</option>
+                            </select>
+                        </div>
                     </div>
-                    <div>
-                        <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Technician ID</label>
-                        <input v-model="useForm.technician" type="text" required class="w-full p-3 bg-white border border-gray-200 rounded-xl font-semibold text-gray-900 outline-none focus:ring-2 focus:ring-[#0071e3] shadow-sm">
-                    </div>
-                    <div>
-                        <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Assign Serial Number</label>
-                        <select v-if="availableSerials.length > 0" v-model="useForm.serialNumber" class="w-full p-3 bg-white border border-gray-200 rounded-xl font-mono text-sm text-gray-900 outline-none focus:ring-2 focus:ring-[#0071e3] cursor-pointer shadow-sm">
-                            <option value="">-- Non-Serialized --</option>
-                            <option v-for="sn in availableSerials" :key="sn" :value="sn">{{ sn }}</option>
-                        </select>
-                        <div v-else class="p-3 bg-white border border-gray-200 rounded-xl shadow-sm"><p class="text-sm text-gray-500 italic">No serialized units available. Logging as non-serialized.</p></div>
-                    </div>
-                    <button type="submit" class="w-full bg-[#0071e3] hover:bg-[#005bb5] text-white p-3.5 rounded-xl font-bold shadow-md transition text-base mt-2">Submit Log</button>
+                    <button type="submit" class="w-full bg-[#0071e3] hover:bg-[#005bb5] text-white p-3.5 rounded-xl font-bold shadow-md transition text-base mt-2">Submit Usage Log</button>
                 </form>
             </div>
             
@@ -758,7 +785,7 @@ createApp({
             hideFOC: false,
             activeTab: 'report', stock: [], availableSerials: [], successMsg: '', isSaving: false,
             searchQuery: '', categoryFilter: '', modelFilter: '', receiveSearch: '', expectedItems: [], searched: false,
-            useSearch: '', useSearchError: '', useForm: { repairId: '', partNumber: '', serialNumber: '', technician: '' },
+            useSearch: '', useSearchError: '', useForm: { repairId: '', partNumber: '', serialNumber: '', kbbSerial: '', deviceSn: '', technician: '', warrantyStatus: 'OW', isStock: true },
             rawPDFText: '', parsedAwb: '', parsedItems: [], awbList: [], 
             
             // Dashboard & Analytics
@@ -1141,13 +1168,20 @@ createApp({
                 this.downloadExcel(cleanData, `Receiving_History${dateSuffix}`);
             } else {
                 const cleanData = this.filteredUsage.map(item => ({
-                    "Date Used": new Date(item.used_at).toLocaleDateString(),
+                    "Date": new Date(item.used_at).toLocaleDateString(),
+                    "Invoice No": "", 
                     "Repair ID": item.repair_id,
-                    "Part Number": item.part_number,
-                    "Description": item.description,
-                    "Source": item.is_stock_deduction ? 'Inventory Stock' : 'Customer Specific',
-                    "Serial Number": item.serial_number || 'N/A',
-                    "Technician": item.technician
+                    "Parts Number": item.part_number,
+                    "Product Name": item.description,
+                    "Device's Serial Number": item.device_serial && item.device_serial !== 'UNKNOWN' ? item.device_serial : '',
+                    "KBB Serial Number": item.kbb_serial || '',
+                    "KGB Serial Number": item.serial_number || '',
+                    "Qty": 1,
+                    "Warranty Status": item.warranty_status || '',
+                    "Repair in Progress": item.is_stock_deduction ? 'Stock' : 'No Stock',
+                    "Return To Stock Date": "",
+                    "Technician Name": item.technician,
+                    "WAYBILL": ""
                 }));
                 this.downloadExcel(cleanData, `Usage_History${dateSuffix}`);
             }
@@ -1250,7 +1284,7 @@ createApp({
             }
         },
         resetUseForm() {
-            this.useForm = { repairId: '', partNumber: '', serialNumber: '', technician: '' };
+            this.useForm = { repairId: '', partNumber: '', serialNumber: '', kbbSerial: '', deviceSn: '', technician: '', warrantyStatus: 'OW', isStock: true };
             this.useSearch = ''; this.useSearchError = ''; this.availableSerials = [];
         },
         uploadAppleExcel(event) {
