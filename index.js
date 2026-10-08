@@ -9,7 +9,6 @@ const pool = new Pool({
 });
 
 // --- AUTO DATABASE SETUP ---
-// This runs once when the server starts to ensure your tables have the new columns
 async function initDB() {
   try {
     await pool.query(`
@@ -27,6 +26,12 @@ async function initDB() {
         resolved_at TIMESTAMP
       );
     `);
+    
+    // Explicitly add missing columns to the existing table
+    await pool.query(`ALTER TABLE kbb_returns ADD COLUMN IF NOT EXISTS return_awb VARCHAR(100);`);
+    await pool.query(`ALTER TABLE kbb_returns ADD COLUMN IF NOT EXISTS resolved_at TIMESTAMP;`);
+    await pool.query(`ALTER TABLE kbb_returns ADD COLUMN IF NOT EXISTS remark TEXT;`);
+    
     await pool.query(`ALTER TABLE usage_logs ADD COLUMN IF NOT EXISTS is_stock_deduction BOOLEAN DEFAULT TRUE;`);
     await pool.query(`ALTER TABLE usage_logs ADD COLUMN IF NOT EXISTS warranty_status VARCHAR(50);`);
     console.log("Database Schema Verified & Updated.");
@@ -230,7 +235,6 @@ fastify.get("/api/identify-sn/:sn", async (request, reply) => {
   } catch (err) { return reply.code(500).send({ error: err.message }); }
 });
 
-// Single Manual Use
 fastify.post("/api/use", async (request, reply) => {
   try {
     const { repairId, partNumber, serialNumber, kbbSerial, deviceSn, technician, warrantyStatus, isStock } = request.body;
@@ -274,8 +278,6 @@ fastify.post("/api/use", async (request, reply) => {
   } catch (err) { return reply.code(500).send({ error: err.message }); }
 });
 
-// Bulk Upload Usage (With Duplicate Skipping & Smart Stock Logic)
-// Bulk Upload Usage (With KBB Serial Number & Strict Duplicate Skipping)
 fastify.post("/api/bulk-use", async (request, reply) => {
   try {
     const items = request.body.items;
@@ -288,31 +290,25 @@ fastify.post("/api/bulk-use", async (request, reply) => {
       const pNum = item.partNumber.toString().trim();
       const rId = item.repairId ? item.repairId.toString().trim() : 'UNKNOWN_REPAIR';
       
-      // STRICT DUPLICATE CHECK: Skip if Repair ID + Part Number is ALREADY in usage_logs
-      const checkUsage = await pool.query(
-        `SELECT id FROM usage_logs WHERE repair_id = $1 AND part_number = $2`, 
-        [rId, pNum]
-      );
+      const checkUsage = await pool.query(`SELECT id FROM usage_logs WHERE repair_id = $1 AND part_number = $2`, [rId, pNum]);
       if (checkUsage.rows.length > 0) {
         skippedCount++;
-        continue; // Skip existing record completely
+        continue;
       }
 
       const sn = item.serialNumber ? item.serialNumber.toString().trim() : null;
-      const kbbSn = item.kbbSerial ? item.kbbSerial.toString().trim() : sn; // Fallback to replacement SN if blank
+      const kbbSn = item.kbbSerial ? item.kbbSerial.toString().trim() : sn;
       const tech = item.technician ? item.technician.toString().trim() : 'TECH';
       const devSn = item.deviceSn ? item.deviceSn.toString().trim() : 'UNKNOWN';
       const warranty = item.warrantyStatus ? item.warrantyStatus.toString().trim() : null;
       const isStock = item.isStock === true;
 
-      // Check if it's a Battery/Consumable for Auto-Archive
       const { category } = detectCategory(item.description);
       const isNonReturnable = category === 'Battery' || (item.description && item.description.toUpperCase().includes('BATTERY'));
       
       let kbbStatus = isNonReturnable ? 'NON_RETURNABLE' : 'PENDING';
       let kbbRemark = isNonReturnable ? 'Auto-Closed: Consumable/Battery' : null;
 
-      // 1. Ensure Part exists in DB
       await pool.query(
         `INSERT INTO parts (part_number, product, model, description, base_seed_qty) 
          VALUES ($1, 'Unknown', 'Unknown', 'Auto-added from Bulk Usage', 0) 
@@ -320,14 +316,12 @@ fastify.post("/api/bulk-use", async (request, reply) => {
         [pNum]
       );
       
-      // 2. Insert into Usage Logs
       await pool.query(
         `INSERT INTO usage_logs (repair_id, device_serial, part_number, serial_number, technician, is_stock_deduction, warranty_status) 
          VALUES ($1, $2, $3, $4, $5, $6, $7)`, 
         [rId, devSn, pNum, sn, tech, isStock, warranty]
       );
       
-      // 3. Spawn KBB Return record with the extracted Broken Part S/N
       const checkKbb = await pool.query(`SELECT id FROM kbb_returns WHERE repair_id = $1 AND part_number = $2`, [rId, pNum]);
       if (checkKbb.rows.length === 0) {
         if (isNonReturnable) {
@@ -351,7 +345,6 @@ fastify.post("/api/bulk-use", async (request, reply) => {
   } catch (err) { return reply.code(500).send({ error: err.message }); }
 });
 
-// --- NEW KBB RETURN ENDPOINTS ---
 fastify.get("/api/kbb", async (request, reply) => {
   try {
     const { rows } = await pool.query(`
@@ -377,7 +370,7 @@ fastify.get("/api/kbb", async (request, reply) => {
     return rows;
   } catch (err) { return reply.code(500).send({ error: err.message }); }
 });
-// Process a KBB Return (Ship to Apple)
+
 fastify.post('/api/kbb/return', async (request, reply) => {
   const { id, kbbSerial, returnAwb } = request.body;
   try {
@@ -385,16 +378,15 @@ fastify.post('/api/kbb/return', async (request, reply) => {
           `UPDATE kbb_returns 
            SET kbb_serial = $1, return_awb = $2, status = 'SHIPPED', resolved_at = CURRENT_TIMESTAMP 
            WHERE id = $3`,
-          [kbbSerial, returnAwb, id]
+          [kbbSerial || null, returnAwb || null, id]
       );
       return { success: true };
   } catch (error) {
-      console.error("KBB Return Error:", error);
-      reply.code(500).send({ error: 'Database error' });
+      console.error("KBB Return Error:", error.message);
+      reply.code(500).send({ error: error.message }); 
   }
 });
 
-// Close a KBB Return without shipping (e.g., beyond repair)
 fastify.post('/api/kbb/close', async (request, reply) => {
   const { id, remark } = request.body;
   try {
@@ -406,8 +398,8 @@ fastify.post('/api/kbb/close', async (request, reply) => {
       );
       return { success: true };
   } catch (error) {
-      console.error("KBB Close Error:", error);
-      reply.code(500).send({ error: 'Database error' });
+      console.error("KBB Close Error:", error.message);
+      reply.code(500).send({ error: error.message });
   }
 });
 
@@ -474,13 +466,11 @@ fastify.post("/api/update-part", async (request, reply) => {
 
 // Start the server (Compatible with both local StackBlitz and Vercel Serverless)
 if (process.env.VERCEL) {
-  // Vercel serverless mode
   module.exports = async (req, res) => {
     await fastify.ready();
     fastify.server.emit('request', req, res);
   };
 } else {
-  // Local / StackBlitz mode
   fastify.listen({ port: process.env.PORT || 3000, host: '0.0.0.0' }, (err, address) => {
     if (err) {
       console.error(err);
