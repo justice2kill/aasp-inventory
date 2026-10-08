@@ -570,6 +570,8 @@
                     <select v-model="reportType" class="p-2 border border-gray-200 rounded-full bg-gray-50 font-semibold text-slate-800 outline-none focus:ring-2 focus:ring-slate-900 text-sm">
                         <option value="receiving">Receiving History</option>
                         <option value="usage">Usage History</option>
+                        <option value="kbb">KBB Returns Tracker</option>
+                        <option value="inout">Stock In/Out (Monthly Balance)</option>
                     </select>
                 </div>
                 <div class="flex flex-wrap items-center gap-3 bg-gray-50 p-2 rounded-2xl border border-gray-200">
@@ -643,6 +645,59 @@
                     </tbody>
                 </table>
             </div>
+            
+            <div v-if="reportType === 'kbb'" class="overflow-x-auto rounded-xl border border-gray-100">
+                <table class="w-full text-left whitespace-nowrap print-only-table">
+                    <thead>
+                        <tr class="bg-gray-50/80 text-gray-500 text-xs uppercase tracking-wider border-b border-gray-100">
+                            <th class="p-4 font-semibold">Date Logged</th>
+                            <th class="p-4 font-semibold">Repair ID</th>
+                            <th class="p-4 font-semibold">Part Number</th>
+                            <th class="p-4 font-semibold">KBB Serial</th>
+                            <th class="p-4 font-semibold">Status</th>
+                            <th class="p-4 font-semibold">Waybill (AWB)</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-100">
+                        <tr v-for="item in filteredReportKBBs" :key="'rep-kbb-'+item.id" class="hover:bg-gray-50/50 transition text-sm text-gray-700">
+                            <td class="p-4 font-medium">{{ new Date(item.created_at).toLocaleDateString() }}</td>
+                            <td class="p-4 font-bold text-gray-900">{{ item.repair_id }}</td>
+                            <td class="p-4 font-mono font-bold text-gray-900">{{ item.part_number }}</td>
+                            <td class="p-4 font-mono text-amber-700 font-medium">{{ item.kbb_serial || 'N/A' }}</td>
+                            <td class="p-4 font-semibold">
+                                <span :class="item.status === 'SHIPPED' ? 'bg-green-100 text-green-800' : (item.status === 'PENDING' ? 'bg-amber-100 text-amber-800' : 'bg-gray-100 text-gray-800')" class="px-2 py-1 rounded text-xs">
+                                    {{ item.status }}
+                                </span>
+                            </td>
+                            <td class="p-4 font-mono text-blue-600 font-bold">{{ item.return_awb || item.remark || '---' }}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div v-if="reportType === 'inout'" class="overflow-x-auto rounded-xl border border-gray-100">
+                <table class="w-full text-left whitespace-nowrap print-only-table">
+                    <thead>
+                        <tr class="bg-gray-50/80 text-gray-500 text-xs uppercase tracking-wider border-b border-gray-100">
+                            <th class="p-4 font-semibold">Part Number</th>
+                            <th class="p-4 font-semibold">Description</th>
+                            <th class="p-4 font-semibold text-center">IN (Received)</th>
+                            <th class="p-4 font-semibold text-center">OUT (Used)</th>
+                            <th class="p-4 font-semibold text-center">Closing Balance</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-100">
+                        <tr v-for="item in inOutReportData" :key="'inout-'+item.part_number" class="hover:bg-gray-50/50 transition text-sm text-gray-700">
+                            <td class="p-4 font-bold text-gray-900">{{ item.part_number }}</td>
+                            <td class="p-4">{{ item.description }}</td>
+                            <td class="p-4 font-bold text-green-600 text-center">{{ item.in_qty === 0 ? '0' : '+' + item.in_qty }}</td>
+                            <td class="p-4 font-bold text-red-600 text-center">{{ item.out_qty === 0 ? '0' : '-' + item.out_qty }}</td>
+                            <td class="p-4 font-bold text-blue-600 text-center">{{ item.closing_balance }}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
         </div>
 
         <!-- Seamless Calculator Tab -->
@@ -855,6 +910,61 @@ createApp({
                 const start = this.reportStart ? new Date(this.reportStart).setHours(0,0,0,0) : -Infinity;
                 const end = this.reportEnd ? new Date(this.reportEnd).setHours(23,59,59,999) : Infinity;
                 return itemDate >= start && itemDate <= end;
+            });
+        },
+        filteredReportKBBs() {
+            return this.kbbList.filter(item => {
+                if (!this.reportStart && !this.reportEnd) return true;
+                const itemDate = new Date(item.created_at).setHours(0,0,0,0);
+                const start = this.reportStart ? new Date(this.reportStart).setHours(0,0,0,0) : -Infinity;
+                const end = this.reportEnd ? new Date(this.reportEnd).setHours(23,59,59,999) : Infinity;
+                return itemDate >= start && itemDate <= end;
+            });
+        },
+        inOutReportData() {
+            const partsArray = this.stock || [];
+            const receiveArray = this.historyList || [];
+            const usageArray = this.usageList || [];
+
+            const start = this.reportStart ? new Date(this.reportStart).setHours(0,0,0,0) : -Infinity;
+            const end = this.reportEnd ? new Date(this.reportEnd).setHours(23,59,59,999) : Infinity;
+
+            return partsArray.map(part => {
+                let inQty = 0;
+                let outQty = 0;
+                let closingRefills = 0;
+                let closingUsage = 0;
+
+                // 1. Tally Receiving (IN)
+                receiveArray.forEach(r => {
+                    if (r.part_number === part.part_number) {
+                        const rDate = new Date(r.received_at).getTime();
+                        const qty = Number(r.quantity) || 1; // Fallback to 1 if missing
+                        if (rDate <= end) closingRefills += qty;
+                        if (rDate >= start && rDate <= end) inQty += qty;
+                    }
+                });
+
+                // 2. Tally Usage (OUT)
+                usageArray.forEach(u => {
+                    if (u.part_number === part.part_number && u.is_stock_deduction !== false) {
+                        const uDate = new Date(u.used_at || u.created_at).getTime();
+                        if (uDate <= end) closingUsage += 1;
+                        if (uDate >= start && uDate <= end) outQty += 1;
+                    }
+                });
+
+                // 3. Closing Balance = Original Seed + All Refills up to End Date - All Usage up to End Date
+                const seedQty = Number(part.current_seed_qty || 0);
+                const closingBalance = seedQty + closingRefills - closingUsage;
+
+                return {
+                    part_number: part.part_number,
+                    description: part.description || part.model || '',
+                    in_qty: inQty,
+                    out_qty: outQty,
+                    closing_balance: closingBalance
+                };
             });
         },
         filteredDashUsage() {
@@ -1166,7 +1276,7 @@ createApp({
                     "Classification": item.classification || 'N/A'
                 }));
                 this.downloadExcel(cleanData, `Receiving_History${dateSuffix}`);
-            } else {
+            } else if (this.reportType === 'usage') {
                 const cleanData = this.filteredUsage.map(item => ({
                     "Date": new Date(item.used_at).toLocaleDateString(),
                     "Invoice No": "", 
@@ -1184,6 +1294,29 @@ createApp({
                     "WAYBILL": ""
                 }));
                 this.downloadExcel(cleanData, `Usage_History${dateSuffix}`);
+            } else if (this.reportType === 'kbb') {
+                const cleanData = this.filteredReportKBBs.map(item => ({
+                    "Date Logged": new Date(item.created_at).toLocaleDateString(),
+                    "Repair ID": item.repair_id,
+                    "Device S/N": item.device_serial,
+                    "Part Number": item.part_number,
+                    "KBB Serial Number": item.kbb_serial || 'N/A',
+                    "Status": item.status,
+                    "Return Waybill (AWB)": item.return_awb || '',
+                    "Resolution Date": item.resolved_at ? new Date(item.resolved_at).toLocaleDateString() : '',
+                    "Technician": item.technician,
+                    "Remarks": item.remark || ''
+                }));
+                this.downloadExcel(cleanData, `KBB_Returns_History${dateSuffix}`);
+            } else if (this.reportType === 'inout') {
+                const cleanData = this.inOutReportData.map(item => ({
+                    "Part Number": item.part_number,
+                    "Description": item.description,
+                    "Qty IN (Received)": item.in_qty,
+                    "Qty OUT (Used)": item.out_qty,
+                    "Closing Balance": item.closing_balance
+                }));
+                this.downloadExcel(cleanData, `Stock_InOut_Monthly_Balance${dateSuffix}`);
             }
         },
         async fetchDataForReports() { await Promise.all([this.fetchHistory(), this.fetchUsage()]); },
