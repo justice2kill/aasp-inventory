@@ -377,14 +377,38 @@ fastify.get("/api/kbb", async (request, reply) => {
     return rows;
   } catch (err) { return reply.code(500).send({ error: err.message }); }
 });
-
-fastify.post("/api/kbb/close", async (request, reply) => {
+// Process a KBB Return (Ship to Apple)
+fastify.post('/api/kbb/return', async (request, reply) => {
+  const { id, kbbSerial, returnAwb } = request.body;
   try {
-    const { id, remark } = request.body;
-    const query = `UPDATE kbb_returns SET status = 'NON_RETURNABLE', remark = $1, resolved_at = NOW() WHERE id = $2`;
-    await pool.query(query, [remark, id]);
-    return { success: true };
-  } catch (err) { return reply.code(500).send({ error: err.message }); }
+      await pool.query(
+          `UPDATE kbb_returns 
+           SET kbb_serial = $1, return_awb = $2, status = 'SHIPPED', resolved_at = CURRENT_TIMESTAMP 
+           WHERE id = $3`,
+          [kbbSerial, returnAwb, id]
+      );
+      return { success: true };
+  } catch (error) {
+      console.error("KBB Return Error:", error);
+      reply.code(500).send({ error: 'Database error' });
+  }
+});
+
+// Close a KBB Return without shipping (e.g., beyond repair)
+fastify.post('/api/kbb/close', async (request, reply) => {
+  const { id, remark } = request.body;
+  try {
+      await pool.query(
+          `UPDATE kbb_returns 
+           SET remark = $1, status = 'CLOSED', resolved_at = CURRENT_TIMESTAMP 
+           WHERE id = $2`,
+          [remark, id]
+      );
+      return { success: true };
+  } catch (error) {
+      console.error("KBB Close Error:", error);
+      reply.code(500).send({ error: 'Database error' });
+  }
 });
 
 fastify.get("/api/awb-status", async (request, reply) => {
