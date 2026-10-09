@@ -181,8 +181,25 @@ fastify.post("/api/upload-packing-list", async (request, reply) => {
         }
         availableDbItems.splice(matchIndex, 1);
       } else {
-        const query = `INSERT INTO shipment_items (awb_number, part_number, serial_number, qty, status, repair_id, po_number) VALUES ($1, $2, $3, $4, 'IN_TRANSIT', $5, $6)`;
-        await pool.query(query, [item.awb, item.partNumber, item.serialNumber || null, item.qty || 1, item.repairId || null, item.poNumber || null]);
+        
+        // ---> NEW AUTO-FLAGGING RECONCILIATION LOGIC <---
+        let partClassification = 'New Stock';
+        
+        if (item.repairId && item.repairId.trim() !== '') {
+            const usageCheck = await pool.query(
+                `SELECT id FROM usage_logs WHERE repair_id = $1 AND part_number = $2 LIMIT 1`, 
+                [item.repairId.trim(), item.partNumber.trim()]
+            );
+            
+            // If this repair ID already exists in your usage history, it is definitely a refill!
+            if (usageCheck.rows.length > 0) {
+                partClassification = 'Refilled Stock';
+            }
+        }
+        // -----------------------------------------------
+
+        const query = `INSERT INTO shipment_items (awb_number, part_number, serial_number, qty, status, repair_id, po_number, classification) VALUES ($1, $2, $3, $4, 'IN_TRANSIT', $5, $6, $7)`;
+        await pool.query(query, [item.awb, item.partNumber, item.serialNumber || null, item.qty || 1, item.repairId || null, item.poNumber || null, partClassification]);
         addedCount++;
       }
     }
@@ -202,10 +219,55 @@ fastify.get("/api/expected/:query", async (request, reply) => {
 fastify.post("/api/mark-received", async (request, reply) => {
   try {
     const { id, classification, serialNumber } = request.body;
+    
+    // 1. Guard against wrong/missing Part Numbers
+    if (!id) {
+        throw new Error("Part Number not found in Expected Shipments! Please check the P/N or manually add it.");
+    }
+
+    // 2. Fetch the expected item from the database
+    const expectedCheck = await pool.query(
+        `SELECT part_number, serial_number, repair_id FROM shipment_items WHERE id = $1 AND status = 'IN_TRANSIT'`, 
+        [id]
+    );
+    
+    if (expectedCheck.rows.length === 0) {
+        throw new Error("This item is not in your Expected Shipments, or it has already been received.");
+    }
+    const item = expectedCheck.rows[0];
+
+    // 3. Strict Serial Number Validation (If Apple provided a S/N, the scanned one MUST match)
+    if (item.serial_number && serialNumber) {
+        if (item.serial_number.trim().toUpperCase() !== serialNumber.trim().toUpperCase()) {
+            throw new Error(`Serial Number mismatch! Expected: ${item.serial_number}, Scanned: ${serialNumber.toUpperCase()}`);
+        }
+    }
+
+    // 4. THE SMART REFILL LOGIC (Forced at the moment of receiving)
+    let finalClassification = classification || 'New Stock';
+    
+    if (item.repair_id) {
+        const usageCheck = await pool.query(
+            `SELECT id FROM usage_logs WHERE repair_id = $1 AND part_number = $2 LIMIT 1`, 
+            [item.repair_id, item.part_number]
+        );
+        // If it was used in the past, FORCE the classification to Refilled Stock
+        if (usageCheck.rows.length > 0) {
+            finalClassification = 'Refilled Stock';
+        }
+    }
+
+    const finalSn = serialNumber ? serialNumber.trim().toUpperCase() : item.serial_number;
+
+    // 5. Update the Database
     const query = `UPDATE shipment_items SET status = 'RECEIVED', classification = $1, serial_number = $2, received_at = NOW() WHERE id = $3`;
-    await pool.query(query, [classification, serialNumber || null, id]);
-    return { success: true };
-  } catch (err) { return reply.code(500).send({ error: err.message }); }
+    await pool.query(query, [finalClassification, finalSn, id]);
+    
+    return { success: true, classification: finalClassification };
+  } catch (err) { 
+    // This sends a clear 400 Error back to the frontend so it can pop up an alert
+    return reply.code(400).send({ error: err.message }); 
+  }
 });
 
 fastify.get("/api/serials/:part", async (request, reply) => {

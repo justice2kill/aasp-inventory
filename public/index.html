@@ -1506,15 +1506,52 @@ createApp({
         },
         async searchExpected() {
             if(!this.receiveSearch) return;
-            const res = await fetch(`/api/expected/${encodeURIComponent(this.receiveSearch.trim())}`);
-            this.expectedItems = (await res.json()).map(item => ({ ...item, classification: 'REFILLED' }));
+            try {
+                const res = await fetch(`/api/expected/${encodeURIComponent(this.receiveSearch.trim())}`);
+                const data = await res.json();
+                
+                // NEW: If the database returns 0 results, loudly alert the user!
+                if (data.length === 0) {
+                    alert(`❌ SEARCH ERROR: \n\nNo expected shipment found for "${this.receiveSearch.trim()}".\n\nPlease check the barcode, or click 'Manual Add' if it arrived without a packing list.`);
+                    return;
+                }
+                
+                this.expectedItems = data.map(item => ({ ...item, classification: 'REFILLED' }));
+                
+            } catch (e) {
+                alert("❌ NETWORK ERROR: " + e.message);
+            }
         },
         async markReceived(item) {
-            await fetch('/api/mark-received', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ id: item.id, classification: item.classification, serialNumber: item.serial_number }) });
-            this.expectedItems = this.expectedItems.filter(i => i.id !== item.id);
-            this.successMsg = 'Part checked in!'; this.fetchStock(); this.fetchAWBs(); this.fetchDataForReports();
-            if(this.expectedItems.length === 0) this.receiveSearch = ''; 
-            setTimeout(() => this.successMsg = '', 3000);
+            try {
+                const res = await fetch('/api/mark-received', { 
+                    method: 'POST', 
+                    headers: {'Content-Type': 'application/json'}, 
+                    body: JSON.stringify({ id: item.id, classification: item.classification, serialNumber: item.serial_number }) 
+                });
+                
+                const data = await res.json();
+                
+                // NEW: Catch errors and display them loudly
+                if (!res.ok || data.error) {
+                    alert("❌ RECEIVING ERROR: \n\n" + (data.error || "Unknown error occurred."));
+                    return; // Stop processing instantly
+                }
+                
+                // If success, remove from expected queue and show green success message
+                this.expectedItems = this.expectedItems.filter(i => i.id !== item.id);
+                this.successMsg = `✅ Success! Item received as: ${data.classification}`; 
+                
+                this.fetchStock(); 
+                this.fetchAWBs(); 
+                this.fetchDataForReports();
+                
+                if(this.expectedItems.length === 0) this.receiveSearch = ''; 
+                setTimeout(() => this.successMsg = '', 4000);
+                
+            } catch(e) {
+                alert("❌ NETWORK ERROR: " + e.message);
+            }
         },
         async usePart() {
             const res = await fetch('/api/use', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(this.useForm) });
