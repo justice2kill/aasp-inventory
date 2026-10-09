@@ -237,21 +237,22 @@ fastify.get("/api/identify-sn/:sn", async (request, reply) => {
 
 fastify.post("/api/use", async (request, reply) => {
   try {
-    const { repairId, partNumber, serialNumber, kbbSerial, deviceSn, technician, warrantyStatus, isStock } = request.body;
+    const { repairId, partNumber, serialNumber, kbbSerial, deviceSn, technician, warrantyStatus, isStock, usedDate } = request.body;
 
     const pNum = partNumber.trim();
     const rId = repairId.trim();
     const devSn = deviceSn ? deviceSn.trim() : 'UNKNOWN';
     const kgbSn = serialNumber ? serialNumber.trim() : null;
-    const kbbSn = kbbSerial ? kbbSerial.trim() : kgbSn; // Fallback to replacement SN if blank
+    const kbbSn = kbbSerial ? kbbSerial.trim() : kgbSn; 
     const wStat = warrantyStatus ? warrantyStatus.trim() : 'OW';
     const stockFlag = isStock === undefined ? true : isStock;
     
-    // 1. Strict Duplicate Check
+    // NEW: Use selected date, or default to right now
+    const dbDate = usedDate ? new Date(usedDate) : new Date();
+
     const checkUsage = await pool.query(`SELECT id FROM usage_logs WHERE repair_id = $1 AND part_number = $2`, [rId, pNum]);
     if (checkUsage.rows.length > 0) throw new Error("This Repair ID and Part Number combination is already recorded.");
 
-    // 2. Fetch Description to auto-archive Batteries
     const partRes = await pool.query(`SELECT description FROM parts WHERE part_number = $1`, [pNum]);
     let description = partRes.rows.length > 0 ? partRes.rows[0].description : '';
     const { category } = detectCategory(description);
@@ -260,17 +261,16 @@ fastify.post("/api/use", async (request, reply) => {
     let kbbStatus = isNonReturnable ? 'NON_RETURNABLE' : 'PENDING';
     let kbbRemark = isNonReturnable ? 'Auto-Closed: Consumable/Battery' : null;
 
-    // 3. Log the usage
-    const useQuery = `INSERT INTO usage_logs (repair_id, device_serial, part_number, serial_number, technician, is_stock_deduction, warranty_status) VALUES ($1, $2, $3, $4, $5, $6, $7)`;
-    await pool.query(useQuery, [rId, devSn, pNum, kgbSn, technician, stockFlag, wStat]);
+    // Inject dbDate into created_at
+    const useQuery = `INSERT INTO usage_logs (repair_id, device_serial, part_number, serial_number, technician, is_stock_deduction, warranty_status, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`;
+    await pool.query(useQuery, [rId, devSn, pNum, kgbSn, technician, stockFlag, wStat, dbDate]);
     
-    // 4. Spawn the Pending KBB Return
     const checkKbb = await pool.query(`SELECT id FROM kbb_returns WHERE repair_id = $1 AND part_number = $2`, [rId, pNum]);
     if (checkKbb.rows.length === 0) {
         if (isNonReturnable) {
-            await pool.query(`INSERT INTO kbb_returns (repair_id, device_serial, part_number, kbb_serial, technician, status, remark, resolved_at) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`, [rId, devSn, pNum, kbbSn, technician, kbbStatus, kbbRemark]);
+            await pool.query(`INSERT INTO kbb_returns (repair_id, device_serial, part_number, kbb_serial, technician, status, remark, created_at, resolved_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())`, [rId, devSn, pNum, kbbSn, technician, kbbStatus, kbbRemark, dbDate]);
         } else {
-            await pool.query(`INSERT INTO kbb_returns (repair_id, device_serial, part_number, kbb_serial, technician, status) VALUES ($1, $2, $3, $4, $5, 'PENDING')`, [rId, devSn, pNum, kbbSn, technician]);
+            await pool.query(`INSERT INTO kbb_returns (repair_id, device_serial, part_number, kbb_serial, technician, status, created_at) VALUES ($1, $2, $3, $4, $5, 'PENDING', $6)`, [rId, devSn, pNum, kbbSn, technician, dbDate]);
         }
     }
     
@@ -303,6 +303,28 @@ fastify.post("/api/bulk-use", async (request, reply) => {
       const warranty = item.warrantyStatus ? item.warrantyStatus.toString().trim() : null;
       const isStock = item.isStock === true;
 
+      // NEW: Bulletproof Date Parser for Apple Excel Files
+      let dbDate = new Date();
+      if (item.usedDate) {
+          if (typeof item.usedDate === 'number') {
+              // Handle Raw Excel Serial Numbers (e.g., 45199)
+              dbDate = new Date(Math.round((item.usedDate - 25569) * 86400 * 1000));
+          } else {
+              // Handle DD.MM.YYYY or DD/MM/YYYY
+              let dateStr = String(item.usedDate).trim();
+              
+              // If it looks like European/Asian format (e.g., 30.09.2026 or 30/09/2026)
+              const euroFormat = dateStr.match(/^(\d{1,2})[\.\/ -](\d{1,2})[\.\/ -](\d{4})$/);
+              if (euroFormat) {
+                  // Rebuild it as YYYY-MM-DD so JS can read it perfectly
+                  dateStr = `${euroFormat[3]}-${euroFormat[2].padStart(2, '0')}-${euroFormat[1].padStart(2, '0')}`;
+              }
+              
+              const pDate = new Date(dateStr);
+              if (!isNaN(pDate)) dbDate = pDate;
+          }
+      }
+
       const { category } = detectCategory(item.description);
       const isNonReturnable = category === 'Battery' || (item.description && item.description.toUpperCase().includes('BATTERY'));
       
@@ -317,24 +339,24 @@ fastify.post("/api/bulk-use", async (request, reply) => {
       );
       
       await pool.query(
-        `INSERT INTO usage_logs (repair_id, device_serial, part_number, serial_number, technician, is_stock_deduction, warranty_status) 
-         VALUES ($1, $2, $3, $4, $5, $6, $7)`, 
-        [rId, devSn, pNum, sn, tech, isStock, warranty]
+        `INSERT INTO usage_logs (repair_id, device_serial, part_number, serial_number, technician, is_stock_deduction, warranty_status, created_at) 
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`, 
+        [rId, devSn, pNum, sn, tech, isStock, warranty, dbDate]
       );
       
       const checkKbb = await pool.query(`SELECT id FROM kbb_returns WHERE repair_id = $1 AND part_number = $2`, [rId, pNum]);
       if (checkKbb.rows.length === 0) {
         if (isNonReturnable) {
           await pool.query(
-            `INSERT INTO kbb_returns (repair_id, device_serial, part_number, kbb_serial, technician, status, remark, resolved_at) 
-             VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`, 
-            [rId, devSn, pNum, kbbSn, tech, kbbStatus, kbbRemark]
+            `INSERT INTO kbb_returns (repair_id, device_serial, part_number, kbb_serial, technician, status, remark, created_at, resolved_at) 
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())`, 
+            [rId, devSn, pNum, kbbSn, tech, kbbStatus, kbbRemark, dbDate]
           );
         } else {
           await pool.query(
-            `INSERT INTO kbb_returns (repair_id, device_serial, part_number, kbb_serial, technician, status) 
-             VALUES ($1, $2, $3, $4, $5, 'PENDING')`, 
-            [rId, devSn, pNum, kbbSn, tech]
+            `INSERT INTO kbb_returns (repair_id, device_serial, part_number, kbb_serial, technician, status, created_at) 
+             VALUES ($1, $2, $3, $4, $5, 'PENDING', $6)`, 
+            [rId, devSn, pNum, kbbSn, tech, dbDate]
           );
         }
       }

@@ -29,23 +29,26 @@
 
 <div id="app" class="min-h-screen flex flex-col relative">
     <header class="no-print sticky top-0 z-40 glass-nav border-b border-gray-200">
-        <div class="max-w-[90rem] mx-auto px-6 h-16 flex items-center justify-between">
-            <div class="flex items-center space-x-2">
+        <div class="max-w-[90rem] mx-auto px-4 sm:px-6 py-3 md:h-16 flex flex-col md:flex-row md:items-center justify-between gap-3">
+            <div class="flex items-center space-x-2 shrink-0">
                 <svg class="w-6 h-6 text-slate-900" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
                 <h1 class="text-xl font-bold tracking-tight text-gray-900">AASP Inventory</h1>
             </div>
-            <nav class="hidden md:flex space-x-1 bg-gray-100 p-1 rounded-full border border-gray-200 items-center">
-                <button @click="activeTab = 'report'" :class="activeTab === 'report' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'" class="px-5 py-1.5 rounded-full text-sm font-semibold transition-all">Stock</button>
-                <button @click="activeTab = 'upload'" :class="activeTab === 'upload' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'" class="px-5 py-1.5 rounded-full text-sm font-semibold transition-all">Data Hub</button>
-                <button @click="activeTab = 'awb'" :class="activeTab === 'awb' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'" class="px-5 py-1.5 rounded-full text-sm font-semibold transition-all">Tracker</button>
-                <button @click="activeTab = 'receive'" :class="activeTab === 'receive' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'" class="px-5 py-1.5 rounded-full text-sm font-semibold transition-all">Receive</button>
-                <button @click="activeTab = 'use'" :class="activeTab === 'use' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'" class="px-5 py-1.5 rounded-full text-sm font-semibold transition-all">Use</button>
-                <button @click="activeTab = 'returns'" :class="activeTab === 'returns' ? 'bg-amber-500 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'" class="px-5 py-1.5 rounded-full text-sm font-semibold transition-all">Returns (RMA)</button>
-                <button @click="activeTab = 'reports'" :class="activeTab === 'reports' ? 'bg-slate-900 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'" class="px-5 py-1.5 rounded-full text-sm font-semibold transition-all">Reports</button>
-                <button @click="activeTab = 'dashboard'" :class="activeTab === 'dashboard' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'" class="px-5 py-1.5 rounded-full text-sm font-semibold transition-all">Dashboard</button>
+            
+            <!-- Mobile-Friendly Scrollable Nav Bar -->
+            <nav class="flex overflow-x-auto w-full md:w-auto space-x-1 bg-gray-100 p-1 rounded-full border border-gray-200 items-center" style="scrollbar-width: none; -ms-overflow-style: none;">
+                <style>nav::-webkit-scrollbar { display: none; }</style>
+                <button @click="activeTab = 'report'" :class="activeTab === 'report' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'" class="px-5 py-1.5 rounded-full text-sm font-semibold transition-all whitespace-nowrap">Stock</button>
+                <button @click="activeTab = 'upload'" :class="activeTab === 'upload' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'" class="px-5 py-1.5 rounded-full text-sm font-semibold transition-all whitespace-nowrap">Data Hub</button>
+                <button @click="activeTab = 'awb'" :class="activeTab === 'awb' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'" class="px-5 py-1.5 rounded-full text-sm font-semibold transition-all whitespace-nowrap">Tracker</button>
+                <button @click="activeTab = 'receive'" :class="activeTab === 'receive' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'" class="px-5 py-1.5 rounded-full text-sm font-semibold transition-all whitespace-nowrap">Receive</button>
+                <button @click="activeTab = 'use'" :class="activeTab === 'use' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'" class="px-5 py-1.5 rounded-full text-sm font-semibold transition-all whitespace-nowrap">Use</button>
+                <button @click="activeTab = 'returns'" :class="activeTab === 'returns' ? 'bg-amber-500 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'" class="px-5 py-1.5 rounded-full text-sm font-semibold transition-all whitespace-nowrap">Returns (RMA)</button>
+                <button @click="activeTab = 'reports'" :class="activeTab === 'reports' ? 'bg-slate-900 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'" class="px-5 py-1.5 rounded-full text-sm font-semibold transition-all whitespace-nowrap">Reports</button>
+                <button @click="activeTab = 'dashboard'" :class="activeTab === 'dashboard' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'" class="px-5 py-1.5 rounded-full text-sm font-semibold transition-all whitespace-nowrap">Dashboard</button>
                 
-                <div class="w-px h-5 bg-gray-300 mx-1"></div>
-                <button @click="activeTab = 'calculator'" :class="activeTab === 'calculator' ? 'bg-amber-700 text-white shadow-sm' : 'text-amber-700 hover:bg-amber-100'" class="px-4 py-1.5 rounded-full text-sm font-bold transition-all flex items-center gap-1.5">
+                <div class="w-px h-5 bg-gray-300 mx-1 shrink-0"></div>
+                <button @click="activeTab = 'calculator'" :class="activeTab === 'calculator' ? 'bg-amber-700 text-white shadow-sm' : 'text-amber-700 hover:bg-amber-100'" class="px-4 py-1.5 rounded-full text-sm font-bold transition-all flex items-center gap-1.5 shrink-0 whitespace-nowrap">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
                     Calculator
                 </button>
@@ -422,6 +425,10 @@
                     </div>
                     
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Date Used (Optional)</label>
+                            <input v-model="useForm.usedDate" type="date" class="w-full p-2.5 bg-white border border-gray-200 rounded-lg font-semibold text-gray-900 outline-none focus:ring-2 focus:ring-[#0071e3] shadow-sm">
+                        </div>
                         <div>
                             <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Repair ID *</label>
                             <input v-model="useForm.repairId" type="text" required class="w-full p-2.5 bg-white border border-gray-200 rounded-lg font-semibold text-gray-900 outline-none focus:ring-2 focus:ring-[#0071e3] shadow-sm">
@@ -840,7 +847,7 @@ createApp({
             hideFOC: false,
             activeTab: 'report', stock: [], availableSerials: [], successMsg: '', isSaving: false,
             searchQuery: '', categoryFilter: '', modelFilter: '', receiveSearch: '', expectedItems: [], searched: false,
-            useSearch: '', useSearchError: '', useForm: { repairId: '', partNumber: '', serialNumber: '', kbbSerial: '', deviceSn: '', technician: '', warrantyStatus: 'OW', isStock: true },
+            useSearch: '', useSearchError: '', useForm: { repairId: '', partNumber: '', serialNumber: '', kbbSerial: '', deviceSn: '', technician: '', warrantyStatus: 'OW', isStock: true, usedDate: '' },
             rawPDFText: '', parsedAwb: '', parsedItems: [], awbList: [], 
             
             // Dashboard & Analytics
@@ -1417,7 +1424,7 @@ createApp({
             }
         },
         resetUseForm() {
-            this.useForm = { repairId: '', partNumber: '', serialNumber: '', kbbSerial: '', deviceSn: '', technician: '', warrantyStatus: 'OW', isStock: true };
+            this.useForm = { repairId: '', partNumber: '', serialNumber: '', kbbSerial: '', deviceSn: '', technician: '', warrantyStatus: 'OW', isStock: true, usedDate: '' },
             this.useSearch = ''; this.useSearchError = ''; this.availableSerials = [];
         },
         uploadAppleExcel(event) {
@@ -1534,11 +1541,11 @@ createApp({
                     const devSn = row["Device's Serial Number"] || row['Device Serial Number'] || row['Device_Serial'] || 'UNKNOWN';
                     
                     // KGB = Good Replacement Part S/N, KBB = Broken Defective Part S/N
-                    const kgbSn = row['KGB Serial Number'] || row['Serial Number'] || row['Serial_Number'] || row['S/N'] || row['SN'] || null;
                     const kbbSn = row['KBB Serial Number'] || row['KBB S/N'] || row['Defective S/N'] || null;
+                    const dateUsed = row['Date'] || row['Used Date'] || null; // <--- NEW DATE MATCHER
                     
                     const tech = row['Technician Name'] || row['Technician ID'] || row['Technician'] || 'TECH';
-                    const warranty = row['Warranty Status'] || null;
+                    const warranty = row['Warranty Status'] || row['Warranty'] || row['Coverage'] || null;
                     
                     const progressStatus = (row['Repair in Progress'] || '').toString().toUpperCase();
                     const isStock = progressStatus.includes('STOCK') && !progressStatus.includes('NO STOCK');
@@ -1548,11 +1555,12 @@ createApp({
                         partNumber: pNum,
                         description: desc,
                         deviceSn: devSn,
-                        serialNumber: kgbSn, // Replacement Part S/N
-                        kbbSerial: kbbSn,     // Defective Broken Part S/N
+                        serialNumber: kgbSn, 
+                        kbbSerial: kbbSn,    
                         technician: tech,
                         warrantyStatus: warranty,
-                        isStock: isStock
+                        isStock: isStock,
+                        usedDate: dateUsed // <--- SENDS DATE TO BACKEND
                     };
                 }).filter(item => item.partNumber && item.repairId);
                 
