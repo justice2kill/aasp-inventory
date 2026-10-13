@@ -511,6 +511,27 @@ fastify.get("/api/received-history", async (request, reply) => {
   } catch (err) { return reply.code(500).send({ error: err.message }); }
 });
 
+fastify.get("/api/usage-timeline", async (request, reply) => {
+  try {
+    const { part } = request.query;
+    let query = `SELECT TO_CHAR(created_at, 'YYYY-MM-DD') AS usage_date, COUNT(id)::int AS total_used FROM usage_logs`;
+    const params = [];
+    
+    // If a part number is passed, filter by it. Otherwise, return overall shop usage.
+    if (part) {
+      query += ` WHERE part_number = $1`;
+      params.push(part);
+    }
+    
+    query += ` GROUP BY TO_CHAR(created_at, 'YYYY-MM-DD') ORDER BY usage_date ASC`;
+    
+    const result = await pool.query(query, params);
+    return result.rows;
+  } catch (err) { 
+    return reply.code(500).send({ error: err.message }); 
+  }
+});
+
 fastify.get("/api/usage-history", async (request, reply) => {
   try {
     const query = `

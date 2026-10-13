@@ -94,6 +94,20 @@
                         <span v-if="filteredDashUsage.length === 0" class="text-gray-400 font-medium text-sm mt-10">No usage data for this period.</span>
                     </div>
                 </div>
+                
+                <!-- DAILY USAGE TIMELINE (NEW) -->
+                <div v-show="dashboardMode === 'usage'" class="bg-gray-50/50 rounded-2xl border border-gray-200 p-6 shadow-sm flex flex-col mt-8 w-full">
+                    <div class="flex justify-between items-start mb-6">
+                        <div>
+                            <h3 class="text-lg font-bold text-gray-900 mb-1">Daily Repair Volume</h3>
+                            <p class="text-xs text-gray-500">Timeline of parts consumed day over day.</p>
+                        </div>
+                    </div>
+                    
+                    <div id="dailyUsageChart" class="w-full h-[320px] flex justify-center items-center">
+                        <span v-if="filteredDashUsage.length === 0" class="text-gray-400 font-medium text-sm mt-10">No timeline data available for this period.</span>
+                    </div>
+                </div>
 
                 <div class="bg-gray-50/50 rounded-2xl border border-gray-200 p-6 shadow-sm flex flex-col">
                     <div class="flex justify-between items-start mb-6">
@@ -1038,6 +1052,7 @@ createApp({
                 } else {
                     this.renderUsageChart();
                     this.renderUsageDrilldown(this.selectedUsageFamily);
+                    this.renderDailyUsageChart(); // <--- ADD THIS LINE
                 }
             });
         },
@@ -1046,6 +1061,7 @@ createApp({
                 this.$nextTick(() => {
                     this.renderUsageChart();
                     this.renderUsageDrilldown(this.selectedUsageFamily);
+                    this.renderDailyUsageChart(); // <--- ADD THIS LINE
                 });
             }
         }
@@ -1212,6 +1228,57 @@ createApp({
                     this._usageDrillChart = new ApexCharts(container, options);
                     this._usageDrillChart.render();
                 }
+            }
+        },
+
+        renderDailyUsageChart() {
+            if (this.filteredDashUsage.length === 0) {
+                if (this._dailyUsageChart) this._dailyUsageChart.destroy();
+                return;
+            }
+
+            // Group the data by Date
+            let dateCounts = {};
+            this.filteredDashUsage.forEach(item => {
+                // Ensure date is formatted as YYYY-MM-DD
+                const d = new Date(item.used_at || item.created_at);
+                const dateStr = d.toISOString().split('T')[0]; 
+                dateCounts[dateStr] = (dateCounts[dateStr] || 0) + 1;
+            });
+
+            // Sort dates chronologically
+            const sortedDates = Object.keys(dateCounts).sort();
+            const counts = sortedDates.map(date => dateCounts[date]);
+
+            const options = {
+                chart: { type: 'area', height: 320, fontFamily: 'Inter, sans-serif', toolbar: { show: false } },
+                series: [{ name: 'Repairs Completed', data: counts }],
+                xaxis: { 
+                    categories: sortedDates,
+                    type: 'datetime',
+                    labels: { format: 'dd MMM', style: { fontSize: '11px', colors: '#6b7280' } }
+                },
+                yaxis: {
+                    labels: { style: { fontSize: '11px', colors: '#6b7280' }, formatter: (val) => Math.round(val) }
+                },
+                colors: ['#0071e3'],
+                fill: {
+                    type: 'gradient',
+                    gradient: { shadeIntensity: 1, opacityFrom: 0.4, opacityTo: 0.05, stops: [0, 100] }
+                },
+                dataLabels: { enabled: false },
+                stroke: { curve: 'smooth', width: 2 },
+                markers: { size: 4, colors: ['#fff'], strokeColors: '#0071e3', strokeWidth: 2, hover: { size: 6 } },
+                grid: { borderColor: '#f3f4f6', strokeDashArray: 4, yaxis: { lines: { show: true } }, xaxis: { lines: { show: false } } },
+                tooltip: { x: { format: 'dd MMM yyyy' } }
+            };
+
+            const container = document.querySelector("#dailyUsageChart");
+            if (container) {
+                if (this._dailyUsageChart) this._dailyUsageChart.destroy();
+                container.innerHTML = '';
+                this._dailyUsageChart = new ApexCharts(container, options);
+                this._dailyUsageChart.render();
             }
         },
 
