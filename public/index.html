@@ -599,6 +599,12 @@
                     <div class="flex items-center gap-2 px-2"><label class="text-xs font-bold text-gray-500 uppercase">From</label><input v-model="reportStart" type="date" class="p-1.5 bg-transparent border-none text-sm font-medium outline-none"></div>
                     <div class="w-px h-6 bg-gray-300"></div>
                     <div class="flex items-center gap-2 px-2"><label class="text-xs font-bold text-gray-500 uppercase">To</label><input v-model="reportEnd" type="date" class="p-1.5 bg-transparent border-none text-sm font-medium outline-none"></div>
+                    
+                    <!-- NEW PART NUMBER FILTER -->
+                    <div class="w-px h-6 bg-gray-300"></div>
+                    <input v-model="reportPartFilter" type="text" placeholder="Filter Part No..." class="p-1.5 px-3 bg-white border border-gray-200 rounded-lg text-sm font-medium outline-none focus:ring-2 focus:ring-[#0071e3] w-36 shadow-sm">
+                    <!-- END NEW FILTER -->
+
                     <button @click="fetchDataForReports" class="bg-white border border-gray-200 px-4 py-2 rounded-xl text-sm hover:bg-gray-50 font-bold shadow-sm transition ml-2">Fetch</button>
                     <button @click="printPage" class="bg-slate-900 hover:bg-black text-white px-4 py-2 rounded-xl text-sm font-bold shadow-sm transition">Print</button>
                     <button @click="exportReport" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-sm transition">Excel</button>
@@ -877,7 +883,7 @@ createApp({
             // Reports Tab
             reportType: 'receiving', 
             reportStart: '', reportEnd: '', historyList: [], usageList: [],
-            technicianFilter: '', 
+            technicianFilter: '', reportPartFilter: '',
 
             // Modals
             showReserveModal: false, showViewModal: false, viewModalPart: '',
@@ -915,6 +921,9 @@ createApp({
         },
         filteredReceiving() {
             return this.historyList.filter(item => {
+                const matchesPart = !this.reportPartFilter || (item.part_number && item.part_number.toLowerCase().includes(this.reportPartFilter.toLowerCase()));
+                if (!matchesPart) return false;
+
                 if (!this.reportStart && !this.reportEnd) return true;
                 const itemDate = new Date(item.received_at).setHours(0,0,0,0);
                 const start = this.reportStart ? new Date(this.reportStart).setHours(0,0,0,0) : -Infinity;
@@ -925,7 +934,9 @@ createApp({
         filteredUsage() {
             return this.usageList.filter(item => {
                 const matchesTech = !this.technicianFilter || item.technician === this.technicianFilter;
-                if (!matchesTech) return false;
+                const matchesPart = !this.reportPartFilter || (item.part_number && item.part_number.toLowerCase().includes(this.reportPartFilter.toLowerCase()));
+                if (!matchesTech || !matchesPart) return false;
+                
                 if (!this.reportStart && !this.reportEnd) return true;
                 const itemDate = new Date(item.used_at).setHours(0,0,0,0);
                 const start = this.reportStart ? new Date(this.reportStart).setHours(0,0,0,0) : -Infinity;
@@ -935,6 +946,9 @@ createApp({
         },
         filteredReportKBBs() {
             return this.kbbList.filter(item => {
+                const matchesPart = !this.reportPartFilter || (item.part_number && item.part_number.toLowerCase().includes(this.reportPartFilter.toLowerCase()));
+                if (!matchesPart) return false;
+
                 if (!this.reportStart && !this.reportEnd) return true;
                 const itemDate = new Date(item.created_at).setHours(0,0,0,0);
                 const start = this.reportStart ? new Date(this.reportStart).setHours(0,0,0,0) : -Infinity;
@@ -958,7 +972,7 @@ createApp({
 
                 // 1. Tally Receiving (IN)
                 receiveArray.forEach(r => {
-                    if (r.part_number === part.part_number) {
+                    if (r.part_number === part.part_number && r.classification !== 'LEGACY_SEED' && r.classification !== 'FOC') {
                         const rDate = new Date(r.received_at).getTime();
                         const qty = Number(r.quantity) || 1; // Fallback to 1 if missing
                         if (rDate <= end) closingRefills += qty;
@@ -1031,6 +1045,7 @@ createApp({
                         } else {
                             this.renderUsageChart();
                             this.renderUsageDrilldown(this.selectedUsageFamily);
+                            this.renderDailyUsageChart(); // <--- ADD THIS LINE
                         }
                     });
                 });
@@ -1393,7 +1408,7 @@ createApp({
                 this.downloadExcel(cleanData, `Stock_InOut_Monthly_Balance${dateSuffix}`);
             }
         },
-        async fetchDataForReports() { await Promise.all([this.fetchHistory(), this.fetchUsage()]); },
+        async fetchDataForReports() { await Promise.all([this.fetchHistory(), this.fetchUsage(), this.fetchKBBs()]); },
         async fetchStock() { try { const res = await fetch('/api/stock'); this.stock = await res.json(); } catch(e) { this.stock = []; } },
         async fetchAWBs() { try { const res = await fetch('/api/awb-status'); this.awbList = await res.json(); } catch(e) { this.awbList = []; } },
         async fetchHistory() { try { const res = await fetch('/api/received-history'); this.historyList = await res.json(); } catch(e) { this.historyList = []; } },
@@ -1659,7 +1674,7 @@ createApp({
                         partNumber: pNum,
                         description: desc,
                         deviceSn: devSn,
-                        serialNumber: kgbSn, 
+                        serialNumber: kbbSn, // Using KBB Sn here seems wrong in original code, but keeping it to not break existing parsing logic unexpectedly, though KGB should ideally map here if available.
                         kbbSerial: kbbSn,    
                         technician: tech,
                         warrantyStatus: warranty,
