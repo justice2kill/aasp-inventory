@@ -183,7 +183,7 @@ fastify.post("/api/upload-packing-list", async (request, reply) => {
       } else {
         
         // ---> NEW AUTO-FLAGGING RECONCILIATION LOGIC <---
-        let partClassification = 'New Stock';
+        let partClassification = item.classification || 'CUSTOMER_SPECIFIC';
         
         if (item.repairId && item.repairId.trim() !== '') {
             const usageCheck = await pool.query(
@@ -191,9 +191,9 @@ fastify.post("/api/upload-packing-list", async (request, reply) => {
                 [item.repairId.trim(), item.partNumber.trim()]
             );
             
-            // If this repair ID already exists in your usage history, it is definitely a refill!
-            if (usageCheck.rows.length > 0) {
-                partClassification = 'Refilled Stock';
+            // If this repair ID already exists in your usage history, force to REFILLED (unless it's an FOC consumable)
+            if (usageCheck.rows.length > 0 && partClassification !== 'FOC') {
+                partClassification = 'REFILLED';
             }
         }
         // -----------------------------------------------
@@ -244,16 +244,16 @@ fastify.post("/api/mark-received", async (request, reply) => {
     }
 
     // 4. THE SMART REFILL LOGIC (Forced at the moment of receiving)
-    let finalClassification = classification || 'New Stock';
+    let finalClassification = classification || 'CUSTOMER_SPECIFIC';
     
     if (item.repair_id) {
         const usageCheck = await pool.query(
             `SELECT id FROM usage_logs WHERE repair_id = $1 AND part_number = $2 LIMIT 1`, 
             [item.repair_id, item.part_number]
         );
-        // If it was used in the past, FORCE the classification to Refilled Stock
-        if (usageCheck.rows.length > 0) {
-            finalClassification = 'Refilled Stock';
+        // If it was used in the past, FORCE the classification to REFILLED (unless FOC)
+        if (usageCheck.rows.length > 0 && finalClassification !== 'FOC') {
+            finalClassification = 'REFILLED';
         }
     }
 

@@ -371,6 +371,9 @@
                                 <span v-if="item.repair_id" class="text-[10px] font-bold bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded border border-amber-200">
                                     {{ item.repair_id }}
                                 </span>
+                                <span v-if="isRefilledPart(item.repair_id)" class="text-[9px] font-bold bg-[#0071e3]/10 text-[#0071e3] px-1.5 py-0.5 rounded border border-[#0071e3]/20 uppercase tracking-wider">
+                                    Refilled
+                                </span>
                                 <span v-if="item.sn" class="text-gray-400 text-xs">({{ item.sn }})</span>
                             </span>
                             <span class="font-semibold text-xs shrink-0" :class="item.status === 'RECEIVED' ? 'text-green-600' : 'text-amber-500'">{{ item.status === 'RECEIVED' ? '✓ Received' : 'Pending' }}</span>
@@ -392,10 +395,16 @@
             <div v-if="expectedItems.length > 0" class="space-y-4">
                 <div v-for="item in expectedItems" :key="item.id" class="p-6 border border-[#0071e3]/20 rounded-2xl bg-blue-50/20 flex flex-col md:flex-row gap-6 items-start md:items-center justify-between shadow-sm">
                     <div class="flex-1 w-full">
-                        <div class="flex items-center gap-2 mb-2">
+                        <div class="flex items-center flex-wrap gap-2 mb-2">
                             <span class="bg-blue-100 text-blue-800 text-sm font-extrabold px-3 py-1 rounded-md uppercase tracking-wide shadow-sm border border-blue-200">AWB: {{ item.awb_number }}</span>
                             <span v-if="item.po_number && item.po_number !== 'N/A'" class="bg-purple-100 text-purple-800 text-xs font-bold px-2 py-1 rounded-md uppercase tracking-wide border border-purple-200">PO: {{ item.po_number }}</span>
                             <span v-if="item.repair_id" class="bg-amber-100 text-amber-800 text-xs font-bold px-2 py-1 rounded-md uppercase tracking-wide border border-amber-200">Repair: {{ item.repair_id }}</span>
+                            
+                            <!-- NEW DYNAMIC REFILLED BADGE -->
+                            <span v-if="isRefilledPart(item.repair_id)" class="bg-[#0071e3]/10 text-[#0071e3] text-xs font-bold px-2 py-1 rounded-md uppercase tracking-wide border border-[#0071e3]/20 shadow-sm flex items-center gap-1">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                                Refilled Part
+                            </span>
                         </div>
                         <p class="font-mono font-extrabold text-2xl text-gray-900 mb-4 mt-2">{{ item.part_number }}</p>
                         <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Serial Number</label>
@@ -1084,6 +1093,7 @@ createApp({
     mounted() { 
         this.fetchStock(); 
         this.fetchAWBs(); 
+        this.fetchDataForReports(); // <--- ADD THIS LINE
     },
     methods: {
         printPage() { window.print(); },
@@ -1092,6 +1102,11 @@ createApp({
             const workbook = XLSX.utils.book_new();
             XLSX.utils.book_append_sheet(workbook, worksheet, "Report Data");
             XLSX.writeFile(workbook, filename + ".xlsx");
+        },
+        isRefilledPart(repairId) {
+            if (!repairId || repairId === 'N/A') return false;
+            // Checks if this G-Code exists anywhere in your Usage History
+            return this.usageList.some(u => u.repair_id === repairId);
         },
 
         // --- DASHBOARD CHARTS (Non-Reactive) ---
@@ -1546,7 +1561,19 @@ createApp({
                 const lineStart = text.lastIndexOf('\n', match.index);
                 const prefix = text.substring(lineStart === -1 ? 0 : lineStart, match.index);
                 const tokens = prefix.split(',').map(t => t.trim()).filter(t => t);
-                if (tokens.length >= 3) localPo = tokens[tokens.length - 3];
+                
+                // SMART PO DETECTION:
+                // 1. Look for known PO formats (-IW, -OW, -Cons, SSO, FOC) anywhere in the prefix tokens
+                const smartPo = tokens.find(t => t.match(/(?:-IW|-OW|-Cons|SSO|FOC)/i));
+                
+                if (smartPo) {
+                    localPo = smartPo;
+                } else if (tokens.length >= 3) {
+                    localPo = tokens[tokens.length - 3];
+                } else if (tokens.length > 0) {
+                    // Fallback to the first token if it's the new Apple invoice format
+                    localPo = tokens[0];
+                }
                 
                 let contPo = "";
                 const contMatch = blockText.match(/,+([A-Za-z0-9\-_]+-(?:IW|OW|Cons)),+/i);
@@ -1568,7 +1595,7 @@ createApp({
                 for (let i = 0; i < qty; i++) {
                     const isConsumable = localPo && localPo.toUpperCase().includes('FOC') ? 'FOC' : 'REFILLED';
                     this.parsedItems.push({ 
-                        awb: this.parsedAwb || 'UNKNOWN_AWB', poNumber: localPo, partNumber: match[1], 
+                        awb: this.parsedAwb || 'UNKNOWN_AWB', poNumber: localPo || 'N/A', partNumber: match[1], 
                         serialNumber: snMatch ? snMatch[1] : null, repairId: repairMatch ? repairMatch[1] : null,
                         classification: isConsumable, qty: 1 
                     });
@@ -1578,12 +1605,29 @@ createApp({
         async submitParsedList() {
             if(this.parsedItems.length > 0) {
                 this.isSaving = true;
-                const res = await fetch('/api/upload-packing-list', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ items: this.parsedItems }) });
-                this.isSaving = false;
-                if (!res.ok) return alert("Database Error");
-                this.successMsg = `Loaded ${this.parsedItems.length} expected parts!`;
-                this.rawPDFText = ''; this.parsedItems = []; this.fetchAWBs(); this.fetchStock(); 
-                setTimeout(() => this.successMsg = '', 5000);
+                try {
+                    const res = await fetch('/api/upload-packing-list', { 
+                        method: 'POST', 
+                        headers: {'Content-Type': 'application/json'}, 
+                        body: JSON.stringify({ items: this.parsedItems }) 
+                    });
+                    
+                    this.isSaving = false;
+                    
+                    if (!res.ok) {
+                        const errData = await res.json();
+                        alert("Database Error Details: " + (errData.error || "Unknown Server Error"));
+                        return;
+                    }
+                    
+                    this.successMsg = `Loaded ${this.parsedItems.length} expected parts!`;
+                    this.rawPDFText = ''; this.parsedItems = []; 
+                    this.fetchAWBs(); this.fetchStock(); 
+                    setTimeout(() => this.successMsg = '', 5000);
+                } catch (err) {
+                    this.isSaving = false;
+                    alert("Network Error: " + err.message);
+                }
             }
         },
         async searchExpected() {
@@ -1592,7 +1636,6 @@ createApp({
                 const res = await fetch(`/api/expected/${encodeURIComponent(this.receiveSearch.trim())}`);
                 const data = await res.json();
                 
-                // NEW: If the database returns 0 results, loudly alert the user!
                 if (data.length === 0) {
                     alert(`❌ SEARCH ERROR: \n\nNo expected shipment found for "${this.receiveSearch.trim()}".\n\nPlease check the barcode, or click 'Manual Add' if it arrived without a packing list.`);
                     return;
@@ -1614,13 +1657,11 @@ createApp({
                 
                 const data = await res.json();
                 
-                // NEW: Catch errors and display them loudly
                 if (!res.ok || data.error) {
                     alert("❌ RECEIVING ERROR: \n\n" + (data.error || "Unknown error occurred."));
-                    return; // Stop processing instantly
+                    return; 
                 }
                 
-                // If success, remove from expected queue and show green success message
                 this.expectedItems = this.expectedItems.filter(i => i.id !== item.id);
                 this.successMsg = `✅ Success! Item received as: ${data.classification}`; 
                 
