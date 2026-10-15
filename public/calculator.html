@@ -412,8 +412,19 @@ function calcTab1(){
 
 catSel.addEventListener("change", calcTab1); 
 gsx.addEventListener("input", calcTab1); 
+
+// Retrieve saved exchange rate from local storage
+document.addEventListener("DOMContentLoaded", function() {
+    const savedExchangeRate = localStorage.getItem('savedExchangeRate');
+    if (savedExchangeRate) {
+        ex.value = savedExchangeRate;
+        document.getElementById("wur-exchange").value = savedExchangeRate;
+    }
+});
+
 ex.addEventListener("input", function() {
   document.getElementById("wur-exchange").value = this.value;
+  localStorage.setItem('savedExchangeRate', this.value);
   calcTab1(); calcWur();
 });
 calcTab1();
@@ -435,62 +446,6 @@ function getDeviceFamily(name) {
   if (n.includes("apple tv")) return "Apple TV";
   if (n.includes("vision")) return "Vision Pro";
   return "Accessories & Displays";
-}
-
-function getPartCategory(desc) {
-  if (!desc) return "Other / Miscellaneous";
-  const d = desc.toLowerCase();
-  
-  if (d.includes("display") || d.includes("screen") || d.includes("lcm")) return "Display";
-  if (d.includes("logic board") || d.includes("mlb")) return "Logic Board";
-  if (d.includes("top case") || d.includes("keyboard")) return "Top Case / Keyboard";
-  
-  // Enclosure gets its own category now!
-  if (d.includes("enclosure")) return "Enclosure";
-  
-  // Rear parts stay here
-  if (d.includes("back glass") || d.includes("rear")) return "Back Glass / Rear System";
-  
-  if (d.includes("battery")) return "Battery";
-  if (d.includes("camera")) return "Camera";
-  if (d.includes("screw") || d.includes("bracket")) return "Screws & Hardware";
-  if (d.includes("band") || d.includes("loop")) return "Watch Bands";
-  if (d.includes("cable") || d.includes("adapter") || d.includes("power")) return "Cables & Power";
-  
-  return "Other / Miscellaneous";
-}
-
-function getPartCategory(desc) {
-  if (!desc) return "Other / Miscellaneous";
-  const d = desc.toLowerCase();
-  
-  // 1. Explicitly catch Logic Boards first so they don't get mixed up
-  if (d.includes("logic board") || d.includes("mlb")) return "Logic Board";
-  
-  // 2. Catch WUR Parts based on Apple's naming structure (Color, Capacity, Model, ROW/CI-AR)
-  // WUR parts usually contain "row" and a color/capacity, but NEVER say "logic board" or "display"
-  if ((d.includes("row") || d.includes("ci/ar")) && 
-      !d.includes("display") && 
-      !d.includes("camera") && 
-      !d.includes("battery") && 
-      !d.includes("rear") && 
-      !d.includes("mid") &&
-      !d.includes("enclosure")) {
-        return "WUR";
-  }
-
-  // 3. Continue with the rest of the categories
-  if (d.includes("display") || d.includes("screen") || d.includes("lcm")) return "Display";
-  if (d.includes("top case") || d.includes("keyboard")) return "Top Case / Keyboard";
-  if (d.includes("back glass")) return "Back Glass";
-  if (d.includes("enclosure") || d.includes("rear") || d.includes("mid")) return "Enclosures (Mid/Rear System)";
-  if (d.includes("battery")) return "Battery";
-  if (d.includes("camera")) return "Camera";
-  if (d.includes("screw") || d.includes("bracket")) return "Screws & Hardware";
-  if (d.includes("band") || d.includes("loop")) return "Watch Bands";
-  if (d.includes("cable") || d.includes("adapter") || d.includes("power")) return "Cables & Power";
-  
-  return "Other / Miscellaneous";
 }
 
 function getPartCategory(desc) {
@@ -613,7 +568,7 @@ function fetchCSVFromServer() {
   dataMap = {};
 
   // Cache bust the Apple CSV file to always pull fresh from the server when forced
-  const dbUrl = "https://github.com/justice2kill/aasp-inventory/releases/download/v.1.0.0/data.csv" + new Date().getTime();
+  const dbUrl = "https://github.com/justice2kill/aasp-inventory/releases/download/v.1.0.0/data.csv?" + new Date().getTime();
 
   Papa.parse(dbUrl, {
     download: true,
@@ -818,7 +773,7 @@ function calcWur() {
 }
 
 wModel.addEventListener("change", calcWur);
-wEx.addEventListener("input", function() { ex.value = this.value; calcTab1(); calcWur(); });
+wEx.addEventListener("input", function() { ex.value = this.value; localStorage.setItem('savedExchangeRate', this.value); calcTab1(); calcWur(); });
 chkDisp.addEventListener("change", handleUI); chkBg.addEventListener("change", handleUI); chkWur.addEventListener("change", handleUI);
 radType.forEach(r => r.addEventListener("change", handleUI)); wStockInput.addEventListener("input", calcWur);
 handleUI();
