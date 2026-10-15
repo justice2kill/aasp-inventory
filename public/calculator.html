@@ -567,50 +567,73 @@ function fetchCSVFromServer() {
   document.getElementById('loader-title').innerText = "Downloading CSV File...";
   dataMap = {};
 
-  // Cache bust the Apple CSV file to always pull fresh from the server when forced
-  const dbUrl = "https://github.com/justice2kill/aasp-inventory/releases/download/v.1.0.0/data.csv";
+  // Bypass GitHub's strict CORS rules using a free proxy
+  const primaryUrl = "https://corsproxy.io/?" + encodeURIComponent("https://github.com/justice2kill/aasp-inventory/releases/download/v.1.0.0/data.csv");
+  const fallbackUrl = "/data.csv"; 
 
-  Papa.parse(dbUrl, {
-    download: true,
-    header: true,
-    skipEmptyLines: true,
-    complete: function(results) {
-      document.getElementById('loader-title').innerText = "Processing 300,000+ Parts...";
-      const rows = results.data;
-      
-      for (let i = 0; i < rows.length; i++) {
-        const row = rows[i];
-        const model = row['Product Name'];
-        if (!model || !row['Part Number']) continue;
+  function parseUrl(urlToFetch, isFallback = false) {
+    Papa.parse(urlToFetch, {
+      download: true,
+      header: true,
+      skipEmptyLines: true,
+      complete: function(results) {
+        document.getElementById('loader-title').innerText = "Processing 300,000+ Parts...";
+        const rows = results.data;
+        
+        for (let i = 0; i < rows.length; i++) {
+          const row = rows[i];
+          const model = row['Product Name'];
+          if (!model || !row['Part Number']) continue;
 
-        const desc = row['Part Description'] || '';
-        const part = row['Part Number'] + ' - ' + desc;
-        const option = row['Pricing Option'] ? row['Pricing Option'].trim() : 'Price';
-        const price = parseFloat(row['Price']);
-        if (isNaN(price)) continue;
+          const desc = row['Part Description'] || '';
+          const part = row['Part Number'] + ' - ' + desc;
+          const option = row['Pricing Option'] ? row['Pricing Option'].trim() : 'Price';
+          const price = parseFloat(row['Price']);
+          if (isNaN(price)) continue;
 
-        const family = getDeviceFamily(model);
-        const category = getPartCategory(desc);
+          const family = getDeviceFamily(model);
+          const category = getPartCategory(desc);
 
-        if (!dataMap[family]) dataMap[family] = {};
-        if (!dataMap[family][model]) dataMap[family][model] = {};
-        if (!dataMap[family][model][category]) dataMap[family][model][category] = {};
-        if (!dataMap[family][model][category][part]) dataMap[family][model][category][part] = {};
+          if (!dataMap[family]) dataMap[family] = {};
+          if (!dataMap[family][model]) dataMap[family][model] = {};
+          if (!dataMap[family][model][category]) dataMap[family][model][category] = {};
+          if (!dataMap[family][model][category][part]) dataMap[family][model][category][part] = {};
 
-        dataMap[family][model][category][part][option] = price;
+          dataMap[family][model][category][part][option] = price;
+        }
+
+        // SAFETY CHECK: Did we actually load any real parts?
+        if (Object.keys(dataMap).length === 0) {
+            if (!isFallback) {
+                console.warn("Downloaded file was empty or an HTML error page. Trying fallback...");
+                parseUrl(fallbackUrl, true);
+            } else {
+                document.getElementById('loader-title').innerText = "❌ Download Failed";
+                document.getElementById('loader-title').style.color = "#ff3b30";
+                document.getElementById('loader-desc').innerHTML = "Could not download valid CSV data.<br><br><button onclick='forceDatabaseUpdate()' style='padding: 8px 16px; background: #007aff; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold;'>Try Again</button>";
+            }
+            return;
+        }
+
+        localforage.setItem('gnext_apple_parts_db', dataMap).then(function() {
+          hideLoaderAndShowApp();
+        });
+      },
+      error: function(err) {
+        if (!isFallback) {
+          console.warn("Fetch failed. Trying fallback...");
+          parseUrl(fallbackUrl, true);
+        } else {
+          document.getElementById('loader-title').innerText = "❌ Network Error";
+          document.getElementById('loader-title').style.color = "#ff3b30";
+          document.getElementById('loader-desc').innerHTML = "Check your connection and try again.<br><br><button onclick='forceDatabaseUpdate()' style='padding: 8px 16px; background: #007aff; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold;'>Try Again</button>";
+          console.error("PapaParse Error:", err);
+        }
       }
+    });
+  }
 
-      localforage.setItem('gnext_apple_parts_db', dataMap).then(function() {
-        hideLoaderAndShowApp();
-      });
-    },
-    error: function(err) {
-      document.getElementById('loader-title').innerText = "❌ File Not Found";
-      document.getElementById('loader-title').style.color = "#ff3b30";
-      document.getElementById('loader-desc').innerText = "Could not locate 'data.csv' on the server. Please ensure the file is in the public folder.";
-      console.error("PapaParse Error:", err);
-    }
-  });
+  parseUrl(primaryUrl);
 }
 
 function hideLoaderAndShowApp() {
