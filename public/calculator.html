@@ -366,6 +366,7 @@ const categories = [
   ["Display 13 Series", 0.20, 35000],
   ["Display 14, 15 and 16 series", 0.30, 35000], 
   ["Display 17 series", 0.32, 35000],
+  ["Display 18 series", 0.32, 35000],      // <-- NEW ENTRY
   ["iPhone battery", 0.15, 35000], 
   ["All Mid and Rear System", 0.20, 35000],
   ["WUR", 0.10, 0], 
@@ -490,28 +491,27 @@ function autoSelectGNextCategory(modelName, partDesc) {
   const m = (modelName || "").toLowerCase();
   const d = (partDesc || "").toLowerCase();
   
-  let targetIdx = 8; // Default to "OTHER & Accessories" (Index 8)
+  let targetIdx = 9; // Default to "OTHER & Accessories" (Now Index 9)
 
   if (m.includes("mac") || m.includes("imac")) {
-    targetIdx = 7;
+    targetIdx = 8;
   } else if (d.includes("battery")) {
-    targetIdx = 4;
+    targetIdx = 5;
   } else if (d.includes("back glass")) {
-    targetIdx = 9;
+    targetIdx = 10;
   } else if (d.includes("display") || d.includes("screen") || d.includes("lcm")) {
-    if (m.includes("17")) targetIdx = 3;
+    if (m.includes("18")) targetIdx = 4; // <-- Auto-selects new 18 Series formula
+    else if (m.includes("17")) targetIdx = 3;
     else if (m.includes("14") || m.includes("15") || m.includes("16")) targetIdx = 2;
     else if (m.includes("13")) targetIdx = 1;
     else if (m.includes("11") || m.includes("12")) targetIdx = 0;
     else targetIdx = 2;
   } else if (d.includes("rear syst") || d.includes("mid syst")) {
-    // Correctly routes Mid/Rear Systems to Formula #5
-    targetIdx = 5;
-  } else if (d.includes("enclosure")) {
-    // Correctly routes Mac Enclosures solely to "OTHER & Accessories" (Formula #8)
-    targetIdx = 8;
-  } else if (d.includes("wur") || (d.includes("row") && !d.includes("logic board") && !d.includes("rear syst") && !d.includes("mid syst") && !d.includes("display"))) {
     targetIdx = 6;
+  } else if (d.includes("enclosure")) {
+    targetIdx = 9;
+  } else if (d.includes("wur") || (d.includes("row") && !d.includes("logic board") && !d.includes("rear syst") && !d.includes("mid syst") && !d.includes("display"))) {
+    targetIdx = 7;
   }
   
   catSel.value = targetIdx;
@@ -744,16 +744,19 @@ function resetDropdowns(list) { list.forEach(d => { d.innerHTML = '<option value
 
 // --- SHIELD+ WUR CALCULATOR LOGIC ---
 const wurData = [
-  { name: "16", display: 246, backglass: 121, markWurEx: 837 }, 
-  { name: "16 Pro", display: 290, backglass: 121, markWurEx: 984 },
-  { name: "16 Pro Max", display: 334, backglass: 121, markWurEx: 1117 }, 
-  { name: "16 Plus", display: 329, backglass: 121, markWurEx: 904 },
-  { name: "16e", display: 202, backglass: 121, markWurEx: 704 }, 
-  { name: "17", display: 313, backglass: 121, markWurEx: 916 },
-  { name: "17 Pro", display: 313, backglass: 121, markWurEx: 1143 }, 
-  { name: "17 Pro Max", display: 360, backglass: 121, markWurEx: 1209 },
-  { name: "17e", display: 218, backglass: 121, markWurEx: 718 }, 
-  { name: "iPhone Air", display: 313, backglass: 121, markWurEx: 1076 }
+  { name: "16", display: 246, backglass: 121, markWurEx: 837 }, 
+  { name: "16 Pro", display: 290, backglass: 121, markWurEx: 984 },
+  { name: "16 Pro Max", display: 334, backglass: 121, markWurEx: 1117 }, 
+  { name: "16 Plus", display: 329, backglass: 121, markWurEx: 904 },
+  { name: "16e", display: 202, backglass: 121, markWurEx: 704 }, 
+  { name: "17", display: 313, backglass: 121, markWurEx: 916 },
+  { name: "17 Pro", display: 313, backglass: 121, markWurEx: 1143 }, 
+  { name: "17 Pro Max", display: 360, backglass: 121, markWurEx: 1209 },
+  { name: "17e", display: 218, backglass: 121, markWurEx: 718 }, 
+  { name: "iPhone Air", display: 313, backglass: 121, markWurEx: 1076 },
+  // --- NEW 18 SERIES ---
+  { name: "18 Pro", display: 313, backglass: 121, markWurEx: 1143 }, 
+  { name: "18 Pro Max", display: 360, backglass: 121, markWurEx: 1209 }
 ];
 const wModel = document.getElementById("wur-model");
 wurData.forEach((m, i) => wModel.appendChild(new Option(m.name, i)));
