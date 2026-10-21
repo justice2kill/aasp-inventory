@@ -312,8 +312,11 @@ fastify.post("/api/use", async (request, reply) => {
     // NEW: Use selected date, or default to right now
     const dbDate = usedDate ? new Date(usedDate) : new Date();
 
-    const checkUsage = await pool.query(`SELECT id FROM usage_logs WHERE repair_id = $1 AND part_number = $2`, [rId, pNum]);
-    if (checkUsage.rows.length > 0) throw new Error("This Repair ID and Part Number combination is already recorded.");
+    const checkUsage = await pool.query(
+      `SELECT id FROM usage_logs WHERE repair_id = $1 AND part_number = $2 AND serial_number IS NOT DISTINCT FROM $3`, 
+      [rId, pNum, kgbSn]
+    );
+    if (checkUsage.rows.length > 0) throw new Error("This exact part and Serial Number is already recorded for this Repair ID.");
 
     const partRes = await pool.query(`SELECT description FROM parts WHERE part_number = $1`, [pNum]);
     let description = partRes.rows.length > 0 ? partRes.rows[0].description : '';
