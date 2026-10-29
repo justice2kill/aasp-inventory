@@ -73,6 +73,19 @@ function detectCategory(description) {
 fastify.get("/api/stock", async (request, reply) => {
   try {
     const query = `
+      WITH incoming_data AS (
+        SELECT part_number, awb_number, COALESCE(classification::text, 'UNCATEGORIZED') as classification, SUM(qty) as total_qty
+        FROM shipment_items
+        WHERE status = 'IN_TRANSIT'
+        GROUP BY part_number, awb_number, COALESCE(classification::text, 'UNCATEGORIZED')
+      ),
+      incoming_agg AS (
+        SELECT part_number, 
+               SUM(total_qty) as incoming_total,
+               json_agg(json_build_object('awb', awb_number, 'qty', total_qty, 'classification', classification)) as incoming_details
+        FROM incoming_data
+        GROUP BY part_number
+      )
       SELECT 
         p.part_number, 
         p.product, 
@@ -82,10 +95,14 @@ fastify.get("/api/stock", async (request, reply) => {
         (SELECT COUNT(*) FROM shipment_items s WHERE s.part_number = p.part_number AND s.status = 'RECEIVED' AND (s.classification IS NULL OR s.classification::text NOT IN ('LEGACY_SEED', 'FOC'))) as total_refilled_received,
         (SELECT COUNT(*) FROM usage_logs u WHERE u.part_number = p.part_number AND u.is_stock_deduction = TRUE) as total_used,
         (SELECT COUNT(*) FROM reservations r WHERE r.part_number = p.part_number AND r.status = 'RESERVED') as total_reserved,
-        (SELECT COUNT(*) FROM shipment_items s WHERE s.part_number = p.part_number AND s.classification = 'FOC') as total_foc
+        (SELECT COUNT(*) FROM shipment_items s WHERE s.part_number = p.part_number AND s.classification::text = 'FOC') as total_foc,
+        COALESCE(ia.incoming_total, 0) as incoming_total,
+        ia.incoming_details
       FROM parts p
+      LEFT JOIN incoming_agg ia ON p.part_number = ia.part_number
       ORDER BY p.part_number
     `;
+    
     const { rows } = await pool.query(query);
 
     const stock = rows.map(r => {
@@ -93,12 +110,15 @@ fastify.get("/api/stock", async (request, reply) => {
       return {
         ...r,
         remaining_stock: remaining,
-        available_stock: remaining - Number(r.total_reserved)
+        available_stock: remaining - Number(r.total_reserved),
+        incoming_total: Number(r.incoming_total || 0),
+        incoming_details: r.incoming_details || []
       };
     });
 
     return stock;
   } catch (err) {
+    console.error("Stock API Postgres Error:", err.message); 
     return reply.code(500).send({ error: err.message });
   }
 });

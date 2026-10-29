@@ -177,16 +177,17 @@
                 </div>
             </div>
             
-            <div class="overflow-x-auto rounded-xl border border-gray-100">
-                <table class="w-full text-left whitespace-nowrap print-only-table">
-                    <thead>
-                        <tr class="bg-gray-50/80 text-gray-500 text-xs uppercase tracking-wider border-b border-gray-100">
+            <div class="overflow-auto max-h-[75vh] rounded-xl border border-gray-200">
+                <table class="w-full text-left whitespace-nowrap print-only-table relative">
+                    <thead class="sticky top-0 z-20 bg-gray-50 shadow-sm outline outline-1 outline-gray-200">
+                        <tr class="text-gray-600 text-xs uppercase tracking-wider">
                             <th class="p-4 font-semibold">Part Number</th>
                             <th class="p-4 font-semibold">Model & Description</th>
                             <th v-if="showDetails" class="p-4 font-semibold text-center text-gray-400 border-l border-gray-200">Seed</th>
                             <th v-if="showDetails" class="p-4 font-semibold text-center text-gray-400">Refilled</th>
                             <th v-if="showDetails" class="p-4 font-semibold text-center text-gray-400 border-r border-gray-200">Used</th>
                             <th class="p-4 font-semibold text-center bg-gray-100/50">Physical In-Stock</th>
+                            <th class="p-4 font-semibold text-center text-blue-600">Incoming</th>
                             <th class="p-4 font-semibold text-center text-amber-600">Reserved</th>
                             <th class="p-4 font-bold text-gray-900 text-center">Available</th>
                             <th class="p-4 font-semibold text-center no-print">Actions</th>
@@ -216,6 +217,31 @@
                                 <td v-if="showDetails" class="p-4 text-center text-sm font-medium text-blue-500">+{{ item.total_refilled_received }}</td>
                                 <td v-if="showDetails" class="p-4 text-center text-sm font-medium text-red-400 border-r border-gray-100">-{{ item.total_used }}</td>
                                 <td class="p-4 text-center text-sm font-bold text-gray-900 bg-gray-50/30">{{ item.remaining_stock }}</td>
+                                
+                                <!-- NEW INCOMING COLUMN TOOLTIP BLOCK -->
+                                <td class="p-4 text-center relative">
+                                    <div class="group inline-block">
+                                        <span v-if="item.incoming_total > 0" class="inline-flex items-center justify-center px-3 py-1 rounded-full text-sm font-bold bg-blue-100 text-blue-700 border border-blue-200 cursor-help shadow-sm">
+                                            +{{ item.incoming_total }}
+                                        </span>
+                                        <span v-else class="text-sm text-gray-400 font-medium">0</span>
+
+                                        <!-- Hover Tooltip Box -->
+                                        <div v-if="item.incoming_total > 0" class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 bg-slate-900 text-white text-xs rounded-xl p-3 shadow-2xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50 pointer-events-none">
+                                            <div class="font-bold text-gray-300 border-b border-gray-700 pb-2 mb-2 uppercase tracking-wider text-[10px]">Incoming Details (Refilled)</div>
+                                            <div v-for="inc in item.incoming_details" :key="inc.awb" class="flex justify-between items-center py-1">
+                                                <div>
+                                                    <span class="font-mono text-blue-300 font-bold block">{{ inc.awb }}</span>
+                                                    <span class="text-[9px] text-gray-400 uppercase tracking-widest">{{ inc.classification }}</span>
+                                                </div>
+                                                <span class="font-bold text-base bg-white/10 px-2 py-0.5 rounded">{{ inc.qty }}</span>
+                                            </div>
+                                            <!-- Arrow pointing down -->
+                                            <div class="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-900"></div>
+                                        </div>
+                                    </div>
+                                </td>
+                                
                                 <td class="p-4 text-center">
                                     <button v-if="item.total_reserved > 0" @click="viewReservations(item.part_number)" class="inline-flex items-center justify-center px-3 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-700 hover:bg-amber-200 transition shadow-sm cursor-pointer">{{ item.total_reserved }} Waiting</button>
                                     <span v-else class="text-sm text-gray-400 font-medium">0</span>
@@ -228,7 +254,7 @@
                                 </td>
                             </tr>
                             <tr v-if="expandedRow === item.part_number" class="bg-blue-50/10 border-b-2 border-blue-100 shadow-inner">
-                                <td :colspan="showDetails ? 9 : 6" class="p-6">
+                                <td :colspan="showDetails ? 10 : 7" class="p-6">
                                     <div class="max-w-4xl border border-blue-200 bg-white rounded-xl p-5 shadow-sm">
                                         <div class="flex justify-between items-center mb-4">
                                             <h4 class="text-sm font-bold text-gray-900 flex items-center gap-2">
@@ -259,7 +285,7 @@
                                 </td>
                             </tr>
                         </template>
-                        <tr v-if="filteredStock.length === 0"><td :colspan="showDetails ? 9 : 6" class="p-12 text-center text-gray-400 font-medium">No parts found matching your criteria.</td></tr>
+                        <tr v-if="filteredStock.length === 0"><td :colspan="showDetails ? 10 : 7" class="p-12 text-center text-gray-400 font-medium">No parts found matching your criteria.</td></tr>
                     </tbody>
                 </table>
             </div>
