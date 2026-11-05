@@ -1577,7 +1577,6 @@ createApp({
                 const snMatch = blockText.match(/S\/N[,\s:]+([A-Z0-9]{8,15})/i);
                 
                 let repairMatch = blockText.match(/(G\d{8,10})/i);
-                if (!repairMatch) repairMatch = text.match(/(G\d{8,10})/i);
                 
                 let qty = 1;
                 const qtyMatch = blockText.match(/(?:,|\b)(\d+)(?:\.0+)?[,\s]+["']?SI/i);
